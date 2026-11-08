@@ -28,6 +28,10 @@ final class ConverterModel {
     /// Last row the user typed into, so conversions can be redriven when settings change.
     private(set) var lastEdited: Int?
 
+    /// When the row being typed in holds math rather than a plain number, what it worked out
+    /// to — shown under that row as "= 36".
+    private(set) var calculation: (row: Int, result: String)?
+
     /// The pinned conversion the screen was opened from, if any. Its two units lead the list.
     let pair: UnitPair?
 
@@ -90,7 +94,8 @@ final class ConverterModel {
         paramText = text
         guard let param = category.param else { return }
         let trimmed = text.trimmingCharacters(in: .whitespaces)
-        guard let value = UnitsRepository.parse(trimmed, locale: locale), param.range.contains(value) else {
+        let parsed = UnitsRepository.parse(trimmed, locale: locale) ?? Calculator.evaluate(trimmed, locale: locale)
+        guard let value = parsed, param.range.contains(value) else {
             // Keep the last usable setting, but say why a nonsense entry had no effect.
             let low = UnitsRepository.format(param.range.lowerBound, locale: locale)
             let high = UnitsRepository.format(param.range.upperBound, locale: locale)
@@ -144,17 +149,39 @@ final class ConverterModel {
     // MARK: Conversion
 
     private func recompute(from source: Int) {
-        let value = parseValue(texts[source].trimmingCharacters(in: .whitespaces))
+        let text = texts[source].trimmingCharacters(in: .whitespaces)
+        let value = parseValue(text, row: source)
         let sourceUnit = category.units[source]
         for row in texts.indices where row != source {
             texts[row] = value.map { formatValue(sourceUnit.convert($0, to: category.units[row])) } ?? ""
         }
+        // Show what typed math worked out to ("12*3" → "= 36"); a plain number needs no echo.
+        if let value, category.valueFormat == nil, UnitsRepository.parse(text, locale: locale) == nil {
+            calculation = (source, "= " + formatValue(value))
+        } else {
+            calculation = nil
+        }
     }
 
-    /// Read a field the way this category writes values — Clock's "14:30", say, rather than 14.5.
-    private func parseValue(_ text: String) -> Double? {
+    /// Read a field the way this category writes values — Clock's "14:30", say, rather than 14.5
+    /// — falling back to feet and inches ("5'11\"") and arithmetic ("12*3", "1 1/2").
+    private func parseValue(_ text: String, row: Int) -> Double? {
         if let format = category.valueFormat { return format.parse(text) }
-        return UnitsRepository.parse(text, locale: locale)
+        if let value = UnitsRepository.parse(text, locale: locale) { return value }
+        if let value = feetAndInches(text, in: row) { return value }
+        return Calculator.evaluate(text, locale: locale)
+    }
+
+    /// `text` read as feet and inches, in the unit of `row` — for categories that have foot and
+    /// inch units (Length, collar sizes).
+    private func feetAndInches(_ text: String, in row: Int) -> Double? {
+        guard let parsed = FeetAndInches.parse(text, locale: locale) else { return nil }
+        let foot = category.units.first { $0.symbol == "ft" }
+        let inch = category.units.first { $0.symbol == "in" }
+        // Every part that was typed needs its unit in this category.
+        if parsed.feet != 0 && foot == nil || parsed.inches != 0 && inch == nil { return nil }
+        let base = (foot?.toBase(parsed.feet) ?? 0) + (inch?.toBase(parsed.inches) ?? 0)
+        return category.units[row].fromBase(base)
     }
 
     /// Render a converted value the way this category writes values.

@@ -105,7 +105,8 @@ struct ConverterMathTests {
         let model = try model("volume")
         let cup = try row(model, "US cup")
         model.userEdited(row: cup, text: "12*3")
-        #expect(model.texts[try row(model, "Liter")] == "8.517176514")
+        let liter = try row(model, "Liter")
+        #expect(model.texts[liter] == "8.517176514")
         #expect(model.calculation?.row == cup)
         #expect(model.calculation?.result == "= 36")
     }
@@ -121,16 +122,34 @@ struct ConverterMathTests {
         let centimeter = try row(model, "Centimeter")
         model.userEdited(row: centimeter, text: "5'11\"")
         // 5'11" is 71 inches, 180.34 cm — typed into the centimeter row it means 180.34 cm.
-        #expect(model.texts[try row(model, "Inch")] == "71")
-        #expect(model.texts[try row(model, "Meter")] == "1.8034")
+        let inch = try row(model, "Inch")
+        let meter = try row(model, "Meter")
+        #expect(model.texts[inch] == "71")
+        #expect(model.texts[meter] == "1.8034")
         #expect(model.calculation?.result == "= 180.34")
+    }
+
+    @Test func readsFeetAloneAsFeetNotAsAPlainNumber() throws {
+        let model = try model("length")
+        let centimeter = try row(model, "Centimeter")
+        model.userEdited(row: centimeter, text: "6'")
+        #expect(model.calculation?.result == "= 182.88")
+    }
+
+    @Test func apostrophesAreGroupingOnlyBetweenDigits() {
+        #expect(UnitsRepository.parse("1'234", locale: .usEnglish) == 1234)
+        #expect(UnitsRepository.parse("1'234'567", locale: .usEnglish) == 1234567)
+        #expect(UnitsRepository.parse("6'", locale: .usEnglish) == nil)
+        #expect(UnitsRepository.parse("12'34", locale: .usEnglish) == nil)
     }
 
     @Test func readsAHeightInTheFootRow() throws {
         let model = try model("length")
-        model.userEdited(row: try row(model, "Foot"), text: "5'6\"")
+        let foot = try row(model, "Foot")
+        let inch = try row(model, "Inch")
+        model.userEdited(row: foot, text: "5'6\"")
         #expect(model.calculation?.result == "= 5.5")
-        #expect(model.texts[try row(model, "Inch")] == "66")
+        #expect(model.texts[inch] == "66")
     }
 
     @Test func readsInchesInACollarSize() throws {
@@ -142,7 +161,8 @@ struct ConverterMathTests {
     @Test func ignoresFeetWhereTheCategoryHasNoFootUnit() throws {
         let model = try model("mass")
         model.userEdited(row: 0, text: "5'")
-        #expect(model.texts.dropFirst().allSatisfy(\.isEmpty))
+        let othersEmpty = model.texts.dropFirst().allSatisfy(\.isEmpty)
+        #expect(othersEmpty)
         #expect(model.calculation == nil)
     }
 
@@ -158,6 +178,7 @@ struct ConverterMathTests {
         let model = try model("clock")
         model.userEdited(row: 0, text: "9:30")
         #expect(model.calculation == nil)
-        #expect(model.texts.dropFirst().allSatisfy { !$0.isEmpty })
+        let othersFilled = model.texts.dropFirst().allSatisfy { !$0.isEmpty }
+        #expect(othersFilled)
     }
 }

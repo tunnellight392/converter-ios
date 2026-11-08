@@ -187,6 +187,12 @@ private func formatPOSIXNumber(_ value: Double, decimals: Int?) -> String {
 private func parseNumber(_ text: String, locale: Locale = .autoupdatingCurrent) -> Double? {
     var s = text.trimmingCharacters(in: .whitespaces)
         .replacingOccurrences(of: "\u{2212}", with: "-")
+    // An apostrophe is Swiss grouping only between digits with three after it ("1'234"); any
+    // other apostrophe is a feet mark ("6'"), which isn't a plain number.
+    if s.contains(where: { $0 == "'" || $0 == "’" }),
+       s.replacing(/\d['’](?=\d{3}(?!\d))/, with: { String($0.output.first!) }).contains(where: { $0 == "'" || $0 == "’" }) {
+        return nil
+    }
     s.removeAll { " \u{00A0}\u{202F}'’".contains($0) }
     guard !s.isEmpty else { return nil }
 

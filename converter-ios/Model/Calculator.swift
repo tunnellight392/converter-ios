@@ -46,8 +46,8 @@ enum Calculator {
         s = s.replacing(/(\d+)\s+(\d+)\s*\/\s*(\d+)/) { match in
             "(\(match.output.1)+\(match.output.2)/\(match.output.3))"
         }
-        // Drop a trailing operator left while typing ("12*", "3+").
-        while let last = s.last, "+-*/ ".contains(last) { s.removeLast() }
+        // Drop a trailing operator or opening parenthesis left while typing ("12*", "3+(").
+        while let last = s.last, "+-*/( ".contains(last) { s.removeLast() }
         return s
     }
 

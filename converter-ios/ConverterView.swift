@@ -136,17 +136,28 @@ struct ConverterView: View {
             // The field carries the name and symbol, so VoiceOver reads each row once.
             .accessibilityHidden(true)
 
-            ValueField(
-                placeholder: model.placeholder,
-                // The symbol tells apart units that share a name ("Bust" in inches and in cm).
-                accessibilityName: unit.name == unit.symbol ? unit.name : "\(unit.name), \(unit.symbol)",
-                text: Binding(
-                    get: { model.texts[index] },
-                    set: { model.userEdited(row: index, text: $0) }
+            VStack(alignment: .trailing, spacing: 4) {
+                ValueField(
+                    placeholder: model.placeholder,
+                    // The symbol tells apart units that share a name ("Bust" in inches and in cm).
+                    accessibilityName: unit.name == unit.symbol ? unit.name : "\(unit.name), \(unit.symbol)",
+                    text: Binding(
+                        get: { model.texts[index] },
+                        set: { model.userEdited(row: index, text: $0) }
+                    )
                 )
-            )
-            .focused($focusedRow, equals: index)
-            .accessibilityAction(named: "Copy value") { copy(row: index) }
+                .focused($focusedRow, equals: index)
+                .accessibilityAction(named: "Copy value") { copy(row: index) }
+
+                // What typed math ("12*3", "5'11\"") worked out to.
+                if let calculation = model.calculation, calculation.row == index {
+                    Text(calculation.result)
+                        .font(.footnote.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .padding(.trailing, 12)
+                        .accessibilityLabel("Equals \(calculation.result.dropFirst(2))")
+                }
+            }
         }
         .cardStyle()
         .contextMenu {
