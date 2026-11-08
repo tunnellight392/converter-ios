@@ -5,6 +5,7 @@ import SwiftUI
 struct ConverterView: View {
     @State private var model: ConverterModel
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     init(model: ConverterModel) {
         _model = State(initialValue: model)
@@ -62,7 +63,7 @@ struct ConverterView: View {
 
     private func unitRow(_ index: Int) -> some View {
         let unit = model.category.units[index]
-        return HStack(spacing: 12) {
+        return rowLayout {
             VStack(alignment: .leading, spacing: 2) {
                 Text(unit.name)
                     .font(.headline)
@@ -71,15 +72,19 @@ struct ConverterView: View {
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            // The field carries the name and symbol, so VoiceOver reads each row once.
+            .accessibilityHidden(true)
 
             ValueField(
                 placeholder: model.placeholder,
-                accessibilityName: unit.name,
+                // The symbol tells apart units that share a name ("Bust" in inches and in cm).
+                accessibilityName: unit.name == unit.symbol ? unit.name : "\(unit.name), \(unit.symbol)",
                 text: Binding(
                     get: { model.texts[index] },
                     set: { model.userEdited(row: index, text: $0) }
                 )
             )
+            .accessibilityAction(named: "Copy value") { copy(row: index) }
         }
         .cardStyle()
         .contextMenu {
@@ -92,9 +97,24 @@ struct ConverterView: View {
         }
     }
 
+    /// Put a row's value on the clipboard, if it has one.
+    private func copy(row: Int) {
+        let value = model.texts[row].trimmingCharacters(in: .whitespaces)
+        guard !value.isEmpty else { return }
+        copyToPasteboard(value)
+    }
+
+    /// Label beside field normally; at accessibility text sizes the label sits above a
+    /// full-width field, so neither gets squeezed.
+    private var rowLayout: AnyLayout {
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(spacing: 12))
+    }
+
     /// The input for a category's adjustable parameter, e.g. hours worked per week.
     private func paramRow(_ param: CategoryParam) -> some View {
-        HStack(spacing: 12) {
+        rowLayout {
             VStack(alignment: .leading, spacing: 2) {
                 Text(param.label)
                     .font(.headline)
@@ -103,6 +123,7 @@ struct ConverterView: View {
                     .foregroundStyle(model.paramError == nil ? Color.secondary : Color.red)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityHidden(true)
 
             ValueField(
                 placeholder: UnitsRepository.format(param.defaultValue),
@@ -112,6 +133,8 @@ struct ConverterView: View {
                     set: { model.paramEdited($0) }
                 )
             )
+            // Say why an entry was ignored; the label already covers the "h/week" caption.
+            .accessibilityHint(model.paramError ?? "")
         }
         .cardStyle()
     }

@@ -10,7 +10,12 @@ struct ContentView: View {
     /// Current search text. Reordering is only meaningful, and only allowed, while it is blank.
     @State private var query = ""
 
-    private let columns = [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)]
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    /// Two columns of tiles, or one at accessibility text sizes so names have room to grow.
+    private var columns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 16), count: dynamicTypeSize.isAccessibilitySize ? 1 : 2)
+    }
 
     private var matches: [CategoryMatch] {
         UnitsRepository.search(query, in: categories)
@@ -47,6 +52,14 @@ struct ContentView: View {
                                 }
                                 .dropDestination(for: String.self) { ids, _ in
                                     move(ids, onto: match.category.id)
+                                }
+                                // Dragging isn't available to VoiceOver, so offer the same
+                                // reordering as actions.
+                                .accessibilityActions {
+                                    if query.isEmpty {
+                                        Button("Move earlier") { move(match.category.id, by: -1) }
+                                        Button("Move later") { move(match.category.id, by: 1) }
+                                    }
                                 }
                         }
                     }
@@ -115,6 +128,14 @@ struct ContentView: View {
         return true
     }
 
+    /// Move one category a step earlier (`offset` -1) or later (+1), for VoiceOver's actions.
+    private func move(_ id: String, by offset: Int) {
+        guard let from = categories.firstIndex(where: { $0.id == id }),
+              categories.indices.contains(from + offset) else { return }
+        let target = categories[from + offset].id
+        _ = move([id], onto: target)
+    }
+
     /// Move the categories with `ids` to just before `beforeID` (or to the end when nil), then
     /// persist the new tile order.
     private func move(_ ids: [String], before beforeID: String?) {
@@ -139,6 +160,9 @@ struct ContentView: View {
 private struct CategoryTile: View {
     let match: CategoryMatch
 
+    /// The emoji circle grows with the emoji's text style so the emoji never spills out of it.
+    @ScaledMetric(relativeTo: .title) private var circleSize: CGFloat = 52
+
     /// When a search found this tile through one of its units, name that unit instead of the
     /// unit count — it is why the tile is on screen.
     private var subtitle: String {
@@ -150,17 +174,21 @@ private struct CategoryTile: View {
         VStack(spacing: 6) {
             Text(match.category.emoji)
                 .font(.title)
-                .frame(width: 52, height: 52)
+                .frame(width: circleSize, height: circleSize)
                 .background(Color(hex: match.category.colorHex).opacity(0.85), in: .circle)
                 .padding(.bottom, 4)
+                // Decorative: VoiceOver would read the emoji's name before the category's.
+                .accessibilityHidden(true)
+            // Names wrap rather than truncate at large text sizes.
             Text(match.category.name)
                 .font(.subheadline.bold())
-                .lineLimit(1)
+                .lineLimit(2)
             Text(subtitle)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
+                .lineLimit(2)
         }
+        .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity)
         .padding(.vertical, 18)
         .padding(.horizontal, 10)

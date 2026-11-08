@@ -10,13 +10,19 @@ struct FeedbackView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
 
+    /// The header emoji's size, scaled with the user's text size.
+    @ScaledMetric(relativeTo: .largeTitle) private var emojiSize: CGFloat = 48
+
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
                 Text("💬")
-                    .font(.system(size: 48))
+                    .font(.system(size: emojiSize))
+                    // Decorative: the heading below says the same thing.
+                    .accessibilityHidden(true)
                 Text("We'd love to hear from you")
                     .font(.title2.bold())
+                    .accessibilityAddTraits(.isHeader)
                 Text("Have a suggestion, found a bug, or want a new conversion category added? Type your feedback below and we'll get it.")
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.secondary)
