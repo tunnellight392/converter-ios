@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 /// Shows every unit in a category, each with its own input field. Typing a value into any
 /// field instantly converts and fills in all the others.
@@ -26,10 +25,10 @@ struct ConverterView: View {
             }
             .padding()
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Color.groupedBackground)
         .scrollDismissesKeyboard(.interactively)
         .navigationTitle(model.category.name)
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineNavigationTitle()
         .toolbar {
             if model.category.openingValue != nil {
                 // Clock offers a way back to the current moment.
@@ -87,7 +86,7 @@ struct ConverterView: View {
             let value = model.texts[index].trimmingCharacters(in: .whitespaces)
             if !value.isEmpty {
                 Button("Copy \(value)", systemImage: "doc.on.doc") {
-                    UIPasteboard.general.string = value
+                    copyToPasteboard(value)
                 }
             }
         }
@@ -125,16 +124,14 @@ private struct ValueField: View {
     @Binding var text: String
 
     var body: some View {
-        // A keyboard with digits, "-", "." and ":" covers both numbers and Clock's times.
         TextField(placeholder, text: $text)
-            .keyboardType(.numbersAndPunctuation)
+            .valueKeyboard()
             .autocorrectionDisabled()
-            .textInputAutocapitalization(.never)
             .multilineTextAlignment(.trailing)
             .font(.body.monospacedDigit())
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(Color(.secondarySystemBackground), in: .rect(cornerRadius: 10))
+            .background(Color.fieldBackground, in: .rect(cornerRadius: 10))
             .frame(maxWidth: .infinity)
             .accessibilityLabel(accessibilityName)
     }
@@ -160,7 +157,7 @@ extension View {
     func cardStyle() -> some View {
         padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 14))
+            .background(Color.cardBackground, in: .rect(cornerRadius: 14))
     }
 }
 

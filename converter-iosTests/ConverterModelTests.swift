@@ -35,7 +35,8 @@ struct ConverterModelTests {
         let model = try model("length")
         model.userEdited(row: 0, text: "5")
         model.userEdited(row: 0, text: "abc")
-        #expect(model.texts.dropFirst().allSatisfy(\.isEmpty))
+        let othersEmpty = model.texts.dropFirst().allSatisfy(\.isEmpty)
+        #expect(othersEmpty)
     }
 
     @Test func decimalPlacesApplyAndPersist() throws {
@@ -44,7 +45,8 @@ struct ConverterModelTests {
         model.setDecimals(2)
         #expect(model.texts[5] == "0.00") // Mile
         // Reopening the category keeps the choice.
-        #expect(try self.model("length").decimals == 2)
+        let reopened = try self.model("length")
+        #expect(reopened.decimals == 2)
     }
 
     @Test func payDefaultsToTwoDecimalPlaces() throws {
@@ -59,7 +61,8 @@ struct ConverterModelTests {
         model.paramEdited("37.5")
         #expect(model.texts[2] == "39000.00")
         #expect(model.category.note?.contains("37.5-hour") == true)
-        #expect(try self.model("pay").paramText == "37.5", "the work week is remembered")
+        let reopened = try self.model("pay")
+        #expect(reopened.paramText == "37.5", "the work week is remembered")
     }
 
     @Test func outOfRangeWorkWeekIsRejected() throws {
@@ -83,6 +86,7 @@ struct ConverterModelTests {
     @Test func clockOpensOnTheCurrentTime() throws {
         let model = try model("clock")
         #expect(ClockFormat().parse(model.texts[0]) != nil)
-        #expect(model.texts.allSatisfy { !$0.isEmpty })
+        let allFilled = model.texts.allSatisfy { !$0.isEmpty }
+        #expect(allFilled)
     }
 }

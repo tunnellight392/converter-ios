@@ -24,7 +24,7 @@ struct FeedbackView: View {
                 TextField("Type your feedback or new conversion request here…", text: $message, axis: .vertical)
                     .lineLimit(6...12)
                     .padding(12)
-                    .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 12))
+                    .background(Color.cardBackground, in: .rect(cornerRadius: 12))
 
                 Button("Send feedback", systemImage: "paperplane.fill", action: sendFeedback)
                     .buttonStyle(.borderedProminent)
@@ -32,9 +32,9 @@ struct FeedbackView: View {
             }
             .padding()
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Color.groupedBackground)
         .navigationTitle("Feedback")
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineNavigationTitle()
         .alert(
             alertMessage ?? "",
             isPresented: Binding(get: { alertMessage != nil }, set: { if !$0 { alertMessage = nil } })

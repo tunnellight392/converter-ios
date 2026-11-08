@@ -5,7 +5,7 @@ import Testing
 @MainActor
 struct PayCategoryTests {
 
-    private let pay: Category
+    private let pay: converter_ios.Category
     private let hourly: ConvUnit
     private let yearly: ConvUnit
 

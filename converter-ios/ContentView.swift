@@ -40,7 +40,7 @@ struct ContentView: View {
                     .padding()
                 }
             }
-            .background(Color(.systemGroupedBackground))
+            .background(Color.groupedBackground)
             .navigationTitle("Unit Converter")
             .searchable(text: $query, prompt: "Search categories or units")
             .toolbar {
@@ -114,7 +114,7 @@ private struct CategoryTile: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 18)
         .padding(.horizontal, 10)
-        .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 18))
+        .background(Color.cardBackground, in: .rect(cornerRadius: 18))
         .contentShape(.rect(cornerRadius: 18))
     }
 }

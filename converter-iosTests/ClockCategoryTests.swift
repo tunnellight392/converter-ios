@@ -10,7 +10,7 @@ struct ClockCategoryTests {
 
     private let format = ClockFormat()
 
-    private func clock() throws -> Category {
+    private func clock() throws -> converter_ios.Category {
         clockCategory(local: try #require(TimeZone(identifier: "America/New_York")))
     }
 
@@ -58,7 +58,8 @@ struct ClockCategoryTests {
     }
 
     @Test func opensOnATimeOfDay() throws {
-        let opening = try #require(try clock().openingValue)()
+        let openingValue = try #require(try clock().openingValue)
+        let opening = openingValue()
         #expect(opening >= 0 && opening < 24)
     }
 
@@ -72,7 +73,8 @@ struct ClockCategoryTests {
         #expect(format.format(hours) == expected)
     }
 
-    @Test(arguments: [
+    /// Text typed into a Clock field, and the hours it should read as.
+    private static let typedTimes: [(String, Double)] = [
         ("9", 9.0),
         ("9:", 9.0),
         ("09:05", 9.0 + 5.0 / 60),
@@ -83,7 +85,9 @@ struct ClockCategoryTests {
         // The day marker the fields display has to read back as the value it was printed from.
         ("08:30 +1d", 32.5),
         ("23:00 -1d", -1.0)
-    ])
+    ]
+
+    @Test(arguments: typedTimes)
     func readsTimesTypedAnyOfTheUsualWays(text: String, expected: Double) throws {
         #expect(abs(try parsed(text) - expected) < 1e-9)
     }
