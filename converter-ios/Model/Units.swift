@@ -12,6 +12,13 @@ struct ConvUnit {
     /// When set, results displayed in this unit are rounded to the nearest multiple of this
     /// increment (e.g. 0.5 to snap shoe sizes to half sizes). Nil means show full precision.
     var snap: Double? = nil
+    /// Identifier that stays the same across launches, for units whose name and symbol don't —
+    /// a Clock zone's symbol carries its current UTC offset, which changes with daylight saving.
+    var stableID: String? = nil
+
+    /// Identifies the unit within its category, e.g. for a pinned conversion. Name and symbol
+    /// together, since some names repeat within a category ("Bust" in inches and in cm).
+    var id: String { stableID ?? "\(name)|\(symbol)" }
 
     /// Convert `value`, expressed in this unit, into `target`, snapped to `target`'s increment if any.
     func convert(_ value: Double, to target: ConvUnit) -> Double {
@@ -327,14 +334,15 @@ private let clockZones: [(id: String, name: String)] = [
 
 /// A time zone as a Clock unit. The base is hours since midnight UTC, so a zone is only an offset —
 /// the one it is on at `date`, which is what puts daylight saving in the right place for today.
-private func zoneUnit(_ name: String, zone: TimeZone, at date: Date, city: String? = nil) -> ConvUnit {
+private func zoneUnit(_ name: String, zone: TimeZone, at date: Date, city: String? = nil, stableID: String? = nil) -> ConvUnit {
     let offsetHours = Double(zone.secondsFromGMT(for: date)) / 3600.0
     let offsetLabel = utcOffsetLabel(offsetHours)
     return ConvUnit(
         name: name,
         symbol: (city == nil || city == offsetLabel) ? offsetLabel : "\(city!) · \(offsetLabel)",
         toBase: { $0 - offsetHours },
-        fromBase: { $0 + offsetHours }
+        fromBase: { $0 + offsetHours },
+        stableID: stableID ?? zone.identifier
     )
 }
 
@@ -371,7 +379,8 @@ func clockCategory(at date: Date = .now, local: TimeZone = .current) -> Category
         .map { zoneUnit($0.name, zone: $0.zone, at: date) }
     return Category(
         id: clockID, name: "Clock", emoji: "🕒", colorHex: "#4338CA",
-        units: [zoneUnit("Local time", zone: local, at: date, city: zoneCity(local))] + elsewhere,
+        // "Local time" follows the device wherever it goes, so it is not tied to the zone's id.
+        units: [zoneUnit("Local time", zone: local, at: date, city: zoneCity(local), stableID: "local")] + elsewhere,
         note: "Your own zone is the one the device is set to — no location access involved. "
             + "Every zone is shown at the UTC offset it is on right now, so a time typed for a "
             + "date the other side of a daylight-saving change can be an hour out.",

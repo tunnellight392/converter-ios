@@ -26,14 +26,28 @@ final class ConverterModel {
     private(set) var decimals: Int?
 
     /// Last row the user typed into, so conversions can be redriven when settings change.
-    private var lastEdited: Int?
+    private(set) var lastEdited: Int?
+
+    /// The pinned conversion the screen was opened from, if any. Its two units lead the list.
+    let pair: UnitPair?
+
+    /// Unit indices in the order the rows are shown: a pinned pair's units first, then the rest.
+    let displayOrder: [Int]
+
+    /// Index of the pinned pair's "from" unit — the row to start typing in.
+    var pairFromIndex: Int? { pair == nil ? nil : displayOrder.first }
 
     private let defaults: UserDefaults
 
     /// Whose conventions numbers are read and shown in — "1,5" in Germany, "1.5" in the US.
     private let locale: Locale
 
-    init?(categoryID: String, defaults: UserDefaults = .standard, locale: Locale = .autoupdatingCurrent) {
+    init?(
+        categoryID: String,
+        pair: UnitPair? = nil,
+        defaults: UserDefaults = .standard,
+        locale: Locale = .autoupdatingCurrent
+    ) {
         guard let base = UnitsRepository.category(id: categoryID) else { return nil }
         self.defaults = defaults
         self.locale = locale
@@ -46,6 +60,18 @@ final class ConverterModel {
         }
         self.category = category
         texts = Array(repeating: "", count: category.units.count)
+        // A pair whose units can't be found (say, a Clock city no longer listed) opens the
+        // category in its usual order.
+        let all = Array(category.units.indices)
+        if let pair,
+           let from = category.units.firstIndex(where: { $0.id == pair.fromUnitID }),
+           let to = category.units.firstIndex(where: { $0.id == pair.toUnitID }), from != to {
+            self.pair = pair
+            displayOrder = [from, to] + all.filter { $0 != from && $0 != to }
+        } else {
+            self.pair = nil
+            displayOrder = all
+        }
         decimals = Self.savedDecimals(category, defaults)
         fillInitialValue()
     }

@@ -6,6 +6,11 @@ struct ConverterView: View {
     @State private var model: ConverterModel
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(Favorites.self) private var favorites
+
+    /// The row being typed in. A pinned conversion opens with its "from" row focused.
+    @FocusState private var focusedRow: Int?
+    @State private var isPinningPair = false
 
     init(model: ConverterModel) {
         _model = State(initialValue: model)
@@ -20,8 +25,22 @@ struct ConverterView: View {
                 if let param = model.category.param {
                     paramRow(param)
                 }
-                ForEach(model.category.units.indices, id: \.self) { index in
-                    unitRow(index)
+                if model.pair != nil {
+                    // Opened from a pinned conversion: its two units first, then the rest.
+                    sectionHeader("Pinned conversion")
+                    ForEach(model.displayOrder.prefix(2), id: \.self) { index in
+                        unitRow(index)
+                    }
+                    if model.displayOrder.count > 2 {
+                        sectionHeader("Other units")
+                        ForEach(model.displayOrder.dropFirst(2), id: \.self) { index in
+                            unitRow(index)
+                        }
+                    }
+                } else {
+                    ForEach(model.displayOrder, id: \.self) { index in
+                        unitRow(index)
+                    }
                 }
             }
             .padding()
@@ -41,11 +60,53 @@ struct ConverterView: View {
                 // Decimal places say nothing about a category that formats its own values.
                 decimalsMenu
             }
+            pinMenu
+        }
+        .sheet(isPresented: $isPinningPair) {
+            PinPairSheet(
+                category: model.category,
+                initialFrom: model.lastEdited ?? model.displayOrder[0]
+            ) { pair in
+                favorites.pin(pair)
+            }
+        }
+        .task {
+            focusedRow = model.pairFromIndex
         }
         .onDisappear { model.save() }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { model.save() }
         }
+    }
+
+    /// Pin this category, or a conversion between two of its units, to the home screen.
+    private var pinMenu: some View {
+        let categoryID = model.category.id
+        let isPinned = favorites.isPinned(categoryID)
+        return Menu("Pin", systemImage: isPinned ? "pin.fill" : "pin") {
+            Button(isPinned ? "Unpin Category" : "Pin Category", systemImage: isPinned ? "pin.slash" : "pin") {
+                favorites.togglePin(categoryID)
+            }
+            if model.category.units.count > 1 {
+                Button("Pin a Conversion…", systemImage: "arrow.left.arrow.right") {
+                    isPinningPair = true
+                }
+            }
+            if let pair = model.pair, favorites.isPinned(pair) {
+                Button("Unpin This Conversion", systemImage: "pin.slash", role: .destructive) {
+                    favorites.unpin(pair)
+                }
+            }
+        }
+    }
+
+    private func sectionHeader(_ title: LocalizedStringKey) -> some View {
+        Text(title)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 4)
+            .accessibilityAddTraits(.isHeader)
     }
 
     private var decimalsMenu: some View {
@@ -84,6 +145,7 @@ struct ConverterView: View {
                     set: { model.userEdited(row: index, text: $0) }
                 )
             )
+            .focused($focusedRow, equals: index)
             .accessibilityAction(named: "Copy value") { copy(row: index) }
         }
         .cardStyle()
@@ -196,10 +258,68 @@ extension Color {
     }
 }
 
+/// Choose two of a category's units to pin as a conversion on the home screen.
+private struct PinPairSheet: View {
+    let category: Category
+    let onPin: (UnitPair) -> Void
+
+    @State private var fromID: String
+    @State private var toID: String
+    @Environment(\.dismiss) private var dismiss
+
+    init(category: Category, initialFrom: Int, onPin: @escaping (UnitPair) -> Void) {
+        self.category = category
+        self.onPin = onPin
+        let units = category.units
+        let from = units.indices.contains(initialFrom) ? initialFrom : 0
+        // Default "to" is the next unit along, wrapping round to the first.
+        let to = (from + 1) % units.count
+        _fromID = State(initialValue: units[from].id)
+        _toID = State(initialValue: units[to].id)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    unitPicker("From", selection: $fromID)
+                    unitPicker("To", selection: $toID)
+                } footer: {
+                    Text("Pinned conversions appear at the top of the home screen.")
+                }
+            }
+            .navigationTitle("Pin a Conversion")
+            .inlineNavigationTitle()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Pin") {
+                        onPin(UnitPair(categoryID: category.id, fromUnitID: fromID, toUnitID: toID))
+                        dismiss()
+                    }
+                    .disabled(fromID == toID)
+                }
+            }
+        }
+    }
+
+    private func unitPicker(_ title: LocalizedStringKey, selection: Binding<String>) -> some View {
+        Picker(title, selection: selection) {
+            ForEach(category.units, id: \.id) { unit in
+                Text(unit.name == unit.symbol ? unit.name : "\(unit.name) (\(unit.symbol))")
+                    .tag(unit.id)
+            }
+        }
+    }
+}
+
 #Preview {
     NavigationStack {
         if let model = ConverterModel(categoryID: "pay") {
             ConverterView(model: model)
         }
     }
+    .environment(Favorites())
 }

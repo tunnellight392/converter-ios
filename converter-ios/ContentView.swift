@@ -17,54 +17,47 @@ struct ContentView: View {
         Array(repeating: GridItem(.flexible(), spacing: 16), count: dynamicTypeSize.isAccessibilitySize ? 1 : 2)
     }
 
+    @Environment(Favorites.self) private var favorites
+
+    /// What a home-screen link opens: a category, or a pinned conversion within one.
+    enum Route: Hashable {
+        case category(String)
+        case pair(UnitPair)
+    }
+
+    private var isSearching: Bool { !query.trimmingCharacters(in: .whitespaces).isEmpty }
+
+    /// The main grid: while searching, every category that matches; otherwise every category
+    /// not already pinned above it.
     private var matches: [CategoryMatch] {
-        UnitsRepository.search(query, in: categories)
+        if isSearching { return UnitsRepository.search(query, in: categories) }
+        return UnitsRepository.search("", in: categories.filter { !favorites.isPinned($0.id) })
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 let matches = matches
-                if matches.isEmpty {
-                    ContentUnavailableView.search(text: query.trimmingCharacters(in: .whitespaces))
-                } else if #available(iOS 27.0, macOS 27.0, *) {
-                    LazyVGrid(columns: columns, spacing: 16) {
-                        ForEach(matches) { match in
-                            tileLink(match)
-                        }
-                        .reorderable()
-                    }
-                    // A drag within search results would reorder a partial list, so only
-                    // allow it while the full grid is on screen.
-                    .reorderContainer(for: CategoryMatch.self, isEnabled: query.isEmpty) { difference in
-                        move(difference)
-                    }
-                    .padding()
-                } else {
-                    // Before iOS 27 there is no reorder container, so tiles are plain drag
-                    // sources and drop targets: drop a tile on another to take its place.
-                    LazyVGrid(columns: columns, spacing: 16) {
-                        ForEach(matches) { match in
-                            tileLink(match)
-                                .draggable(match.category.id) {
-                                    CategoryTile(match: match)
-                                        .frame(width: 160)
-                                }
-                                .dropDestination(for: String.self) { ids, _ in
-                                    move(ids, onto: match.category.id)
-                                }
-                                // Dragging isn't available to VoiceOver, so offer the same
-                                // reordering as actions.
-                                .accessibilityActions {
-                                    if query.isEmpty {
-                                        Button("Move earlier") { move(match.category.id, by: -1) }
-                                        Button("Move later") { move(match.category.id, by: 1) }
-                                    }
-                                }
-                        }
-                    }
-                    .padding()
+                let pairs = isSearching ? [] : favorites.resolvedPairs()
+                let pinned = isSearching ? [] : favorites.categoryIDs.compactMap { id in
+                    categories.first { $0.id == id }
                 }
+                VStack(alignment: .leading, spacing: 16) {
+                    if !pairs.isEmpty || !pinned.isEmpty {
+                        pinnedSection(pairs: pairs, categories: pinned)
+                        if !matches.isEmpty {
+                            sectionHeader("All Categories")
+                        }
+                    }
+                    if matches.isEmpty {
+                        if isSearching {
+                            ContentUnavailableView.search(text: query.trimmingCharacters(in: .whitespaces))
+                        }
+                    } else {
+                        grid(matches)
+                    }
+                }
+                .padding()
             }
             .background(Color.groupedBackground)
             .navigationTitle("Unit Converter")
@@ -76,20 +69,110 @@ struct ContentView: View {
                     Label("Feedback", systemImage: "bubble.left")
                 }
             }
-            .navigationDestination(for: String.self) { id in
-                if let model = ConverterModel(categoryID: id) {
-                    ConverterView(model: model)
+            .navigationDestination(for: Route.self) { route in
+                switch route {
+                case .category(let id):
+                    if let model = ConverterModel(categoryID: id) {
+                        ConverterView(model: model)
+                    }
+                case .pair(let pair):
+                    if let model = ConverterModel(categoryID: pair.categoryID, pair: pair) {
+                        ConverterView(model: model)
+                    }
                 }
             }
         }
     }
 
-    /// A tile that opens its category's converter.
+    /// Pinned conversions as full-width cards, then pinned categories as tiles.
+    private func pinnedSection(pairs: [ResolvedPair], categories pinned: [Category]) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionHeader("Pinned")
+            ForEach(pairs) { resolved in
+                NavigationLink(value: Route.pair(resolved.pair)) {
+                    PairCard(resolved: resolved)
+                }
+                .buttonStyle(.plain)
+                .contextMenu {
+                    Button("Unpin", systemImage: "pin.slash") {
+                        favorites.unpin(resolved.pair)
+                    }
+                }
+                .accessibilityAction(named: "Unpin") { favorites.unpin(resolved.pair) }
+            }
+            if !pinned.isEmpty {
+                LazyVGrid(columns: columns, spacing: 16) {
+                    ForEach(pinned) { category in
+                        tileLink(CategoryMatch(category: category))
+                    }
+                }
+            }
+        }
+    }
+
+    /// Every category not pinned (or every search match), draggable to reorder.
+    @ViewBuilder
+    private func grid(_ matches: [CategoryMatch]) -> some View {
+        if #available(iOS 27.0, macOS 27.0, *) {
+            LazyVGrid(columns: columns, spacing: 16) {
+                ForEach(matches) { match in
+                    tileLink(match)
+                }
+                .reorderable()
+            }
+            // A drag within search results would reorder a partial list, so only
+            // allow it while the full grid is on screen.
+            .reorderContainer(for: CategoryMatch.self, isEnabled: !isSearching) { difference in
+                move(difference)
+            }
+        } else {
+            // Before iOS 27 there is no reorder container, so tiles are plain drag
+            // sources and drop targets: drop a tile on another to take its place.
+            LazyVGrid(columns: columns, spacing: 16) {
+                ForEach(matches) { match in
+                    tileLink(match)
+                        .draggable(match.category.id) {
+                            CategoryTile(match: match)
+                                .frame(width: 160)
+                        }
+                        .dropDestination(for: String.self) { ids, _ in
+                            move(ids, onto: match.category.id)
+                        }
+                        // Dragging isn't available to VoiceOver, so offer the same
+                        // reordering as actions.
+                        .accessibilityActions {
+                            if !isSearching {
+                                Button("Move earlier") { move(match.category.id, by: -1) }
+                                Button("Move later") { move(match.category.id, by: 1) }
+                            }
+                        }
+                }
+            }
+        }
+    }
+
+    private func sectionHeader(_ title: LocalizedStringKey) -> some View {
+        Text(title)
+            .font(.title3.bold())
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    /// A tile that opens its category's converter. Long-press to pin or unpin it.
     private func tileLink(_ match: CategoryMatch) -> some View {
-        NavigationLink(value: match.category.id) {
+        let id = match.category.id
+        let isPinned = favorites.isPinned(id)
+        return NavigationLink(value: Route.category(id)) {
             CategoryTile(match: match)
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button(isPinned ? "Unpin" : "Pin to Top", systemImage: isPinned ? "pin.slash" : "pin") {
+                withAnimation { favorites.togglePin(id) }
+            }
+        }
+        .accessibilityAction(named: isPinned ? "Unpin" : "Pin to Top") {
+            favorites.togglePin(id)
+        }
     }
 
     /// Apply a drag-to-reorder from the iOS 27 reorder container.
@@ -130,10 +213,11 @@ struct ContentView: View {
 
     /// Move one category a step earlier (`offset` -1) or later (+1), for VoiceOver's actions.
     private func move(_ id: String, by offset: Int) {
-        guard let from = categories.firstIndex(where: { $0.id == id }),
-              categories.indices.contains(from + offset) else { return }
-        let target = categories[from + offset].id
-        _ = move([id], onto: target)
+        // Step between the tiles in the grid, skipping pinned categories shown above it.
+        let visible = categories.filter { !favorites.isPinned($0.id) }
+        guard let from = visible.firstIndex(where: { $0.id == id }),
+              visible.indices.contains(from + offset) else { return }
+        _ = move([id], onto: visible[from + offset].id)
     }
 
     /// Move the categories with `ids` to just before `beforeID` (or to the end when nil), then
@@ -197,6 +281,61 @@ private struct CategoryTile: View {
     }
 }
 
+/// A pinned conversion: "Mile → Kilometer" with a sample result, opening that converter.
+private struct PairCard: View {
+    let resolved: ResolvedPair
+
+    @ScaledMetric(relativeTo: .title3) private var circleSize: CGFloat = 40
+
+    /// "1 mi = 1.609344 km", for categories whose values are plain numbers.
+    private var sample: String? {
+        let category = resolved.category
+        guard category.valueFormat == nil else { return nil }
+        let result = UnitsRepository.format(resolved.from.convert(1, to: resolved.to), decimals: category.decimals)
+        return "1 \(resolved.from.symbol) = \(result) \(resolved.to.symbol)"
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(resolved.category.emoji)
+                .font(.title3)
+                .frame(width: circleSize, height: circleSize)
+                .background(Color(hex: resolved.category.colorHex).opacity(0.85), in: .circle)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(resolved.from.name) → \(resolved.to.name)")
+                    .font(.headline)
+                    .accessibilityLabel("\(resolved.from.name) to \(resolved.to.name)")
+                Text(sample.map { "\(resolved.category.name) · \($0)" } ?? resolved.category.name)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+        }
+        .padding(14)
+        .background(Color.cardBackground, in: .rect(cornerRadius: 18))
+        .contentShape(.rect(cornerRadius: 18))
+    }
+}
+
 #Preview {
     ContentView()
+        .environment(Favorites())
+}
+
+#Preview("With pins") {
+    // A throwaway store so the preview's pins don't leak into the app's own.
+    let defaults = UserDefaults(suiteName: "ContentView.preview") ?? .standard
+    defaults.removePersistentDomain(forName: "ContentView.preview")
+    let favorites = Favorites(defaults: defaults)
+    favorites.pin(UnitPair(categoryID: "length", fromUnitID: "Mile|mi", toUnitID: "Kilometer|km"))
+    favorites.pin(UnitPair(categoryID: "temperature", fromUnitID: "Fahrenheit|°F", toUnitID: "Celsius|°C"))
+    favorites.togglePin("mass")
+    favorites.togglePin("pay")
+    return ContentView()
+        .environment(favorites)
 }
