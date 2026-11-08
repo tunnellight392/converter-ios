@@ -22,13 +22,10 @@ struct ContentView: View {
                 let matches = matches
                 if matches.isEmpty {
                     ContentUnavailableView.search(text: query.trimmingCharacters(in: .whitespaces))
-                } else {
+                } else if #available(iOS 27.0, macOS 27.0, *) {
                     LazyVGrid(columns: columns, spacing: 16) {
                         ForEach(matches) { match in
-                            NavigationLink(value: match.category.id) {
-                                CategoryTile(match: match)
-                            }
-                            .buttonStyle(.plain)
+                            tileLink(match)
                         }
                         .reorderable()
                     }
@@ -36,6 +33,22 @@ struct ContentView: View {
                     // allow it while the full grid is on screen.
                     .reorderContainer(for: CategoryMatch.self, isEnabled: query.isEmpty) { difference in
                         move(difference)
+                    }
+                    .padding()
+                } else {
+                    // Before iOS 27 there is no reorder container, so tiles are plain drag
+                    // sources and drop targets: drop a tile on another to take its place.
+                    LazyVGrid(columns: columns, spacing: 16) {
+                        ForEach(matches) { match in
+                            tileLink(match)
+                                .draggable(match.category.id) {
+                                    CategoryTile(match: match)
+                                        .frame(width: 160)
+                                }
+                                .dropDestination(for: String.self) { ids, _ in
+                                    move(ids, onto: match.category.id)
+                                }
+                        }
                     }
                     .padding()
                 }
@@ -58,19 +71,56 @@ struct ContentView: View {
         }
     }
 
-    /// Apply a drag-to-reorder and persist the new tile order.
+    /// A tile that opens its category's converter.
+    private func tileLink(_ match: CategoryMatch) -> some View {
+        NavigationLink(value: match.category.id) {
+            CategoryTile(match: match)
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Apply a drag-to-reorder from the iOS 27 reorder container.
+    @available(iOS 27.0, macOS 27.0, *)
     private func move(_ difference: ReorderDifference<String, ReorderableSingleCollectionIdentifier>) {
-        let moving = difference.sources.compactMap { id in categories.first { $0.id == id } }
-        categories.removeAll { difference.sources.contains($0.id) }
-        let insertAt: Int
+        let before: String?
         switch difference.destination.position {
         case .before(let id):
-            insertAt = categories.firstIndex { $0.id == id } ?? categories.endIndex
+            before = id
         case .end:
-            insertAt = categories.endIndex
+            before = nil
         @unknown default:
-            insertAt = categories.endIndex
+            before = nil
         }
+        move(difference.sources, before: before)
+    }
+
+    /// Apply a tile dropped onto `targetID` (the pre-iOS 27 fallback). Returns whether the drop
+    /// was accepted.
+    private func move(_ ids: [String], onto targetID: String) -> Bool {
+        // A drop within search results would reorder a partial list, so ignore it.
+        guard query.isEmpty, let id = ids.first, id != targetID,
+              let from = categories.firstIndex(where: { $0.id == id }),
+              let to = categories.firstIndex(where: { $0.id == targetID }) else { return false }
+        // The dropped tile takes the target's place: dragging forward lands after the target,
+        // dragging backward lands before it.
+        let before: String?
+        if from > to {
+            before = targetID
+        } else {
+            before = to + 1 < categories.count ? categories[to + 1].id : nil
+        }
+        withAnimation {
+            move([id], before: before)
+        }
+        return true
+    }
+
+    /// Move the categories with `ids` to just before `beforeID` (or to the end when nil), then
+    /// persist the new tile order.
+    private func move(_ ids: [String], before beforeID: String?) {
+        let moving = ids.compactMap { id in categories.first { $0.id == id } }
+        categories.removeAll { ids.contains($0.id) }
+        let insertAt = beforeID.flatMap { id in categories.firstIndex { $0.id == id } } ?? categories.endIndex
         categories.insert(contentsOf: moving, at: insertAt)
         UserDefaults.standard.set(categories.map(\.id), forKey: Self.orderKey)
     }
