@@ -117,6 +117,36 @@ final class ConverterModel {
         if let lastEdited { recompute(from: lastEdited) }
     }
 
+    /// The whole conversion as plain text, for Copy All and Share: the category, any setting it
+    /// depends on, then every unit with a value — the one typed in first, the rest in screen
+    /// order. Nil while there's nothing to share.
+    var shareText: String? {
+        guard let source = lastEdited, texts.indices.contains(source) else { return nil }
+        let typed = texts[source].trimmingCharacters(in: .whitespaces)
+        guard !typed.isEmpty, !texts.enumerated().allSatisfy({ $0.offset == source || $0.element.isEmpty }) else {
+            return nil
+        }
+        var lines = [category.name]
+        if let param = category.param, !paramText.isEmpty, paramError == nil {
+            lines.append("\(param.label): \(paramText)")
+        }
+        // Math is shared as what it worked out to, not as "12*3".
+        let sourceValue = calculation.flatMap { $0.row == source ? String($0.result.dropFirst(2)) : nil } ?? typed
+        let order = [source] + displayOrder.filter { $0 != source }
+        for row in order {
+            let value = row == source ? sourceValue : texts[row]
+            guard !value.isEmpty else { continue }
+            lines.append(Self.line(for: category.units[row], value: value, plain: category.valueFormat == nil))
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// "Kilometer: 1.5 km", "US 9" (where the name is the symbol), or "Tokyo: 14:30" for Clock.
+    private static func line(for unit: ConvUnit, value: String, plain: Bool) -> String {
+        if unit.name == unit.symbol { return "\(unit.name) \(value)" }
+        return plain ? "\(unit.name): \(value) \(unit.symbol)" : "\(unit.name): \(value)"
+    }
+
     /// Placeholder for an empty row — "00:00" for Clock, "0" otherwise.
     var placeholder: String {
         category.valueFormat?.format(0) ?? "0"

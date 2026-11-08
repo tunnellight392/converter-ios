@@ -12,6 +12,12 @@ struct ConverterView: View {
     @FocusState private var focusedRow: Int?
     @State private var isPinningPair = false
 
+    /// Bumped on every copy, to play a success haptic.
+    @State private var copyCount = 0
+
+    /// Focus value for the parameter field (hours per week), alongside unit-row indices.
+    private static let paramFocus = -1
+
     init(model: ConverterModel) {
         _model = State(initialValue: model)
     }
@@ -60,8 +66,10 @@ struct ConverterView: View {
                 // Decimal places say nothing about a category that formats its own values.
                 decimalsMenu
             }
+            shareMenu
             pinMenu
         }
+        .sensoryFeedback(.success, trigger: copyCount)
         .sheet(isPresented: $isPinningPair) {
             PinPairSheet(
                 category: model.category,
@@ -77,6 +85,22 @@ struct ConverterView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { model.save() }
         }
+    }
+
+    /// Copy or share every value at once, as text.
+    private var shareMenu: some View {
+        let text = model.shareText
+        return Menu("Share", systemImage: "square.and.arrow.up") {
+            Button("Copy All", systemImage: "doc.on.doc") {
+                guard let text else { return }
+                copyToPasteboard(text)
+                copyCount += 1
+            }
+            if let text {
+                ShareLink("Share…", item: text)
+            }
+        }
+        .disabled(text == nil)
     }
 
     /// Pin this category, or a conversion between two of its units, to the home screen.
@@ -124,10 +148,12 @@ struct ConverterView: View {
 
     private func unitRow(_ index: Int) -> some View {
         let unit = model.category.units[index]
+        let isActive = focusedRow == index
         return rowLayout {
             VStack(alignment: .leading, spacing: 2) {
                 Text(unit.name)
                     .font(.headline)
+                    .foregroundStyle(isActive ? Color.accentColor : Color.primary)
                 Text(unit.symbol)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -159,12 +185,12 @@ struct ConverterView: View {
                 }
             }
         }
-        .cardStyle()
+        .cardStyle(isActive: isActive)
         .contextMenu {
             let value = model.texts[index].trimmingCharacters(in: .whitespaces)
             if !value.isEmpty {
                 Button("Copy \(value)", systemImage: "doc.on.doc") {
-                    copyToPasteboard(value)
+                    copy(row: index)
                 }
             }
         }
@@ -175,6 +201,7 @@ struct ConverterView: View {
         let value = model.texts[row].trimmingCharacters(in: .whitespaces)
         guard !value.isEmpty else { return }
         copyToPasteboard(value)
+        copyCount += 1
     }
 
     /// Label beside field normally; at accessibility text sizes the label sits above a
@@ -187,10 +214,12 @@ struct ConverterView: View {
 
     /// The input for a category's adjustable parameter, e.g. hours worked per week.
     private func paramRow(_ param: CategoryParam) -> some View {
-        rowLayout {
+        let isActive = focusedRow == Self.paramFocus
+        return rowLayout {
             VStack(alignment: .leading, spacing: 2) {
                 Text(param.label)
                     .font(.headline)
+                    .foregroundStyle(isActive ? Color.accentColor : Color.primary)
                 Text(model.paramError ?? param.caption)
                     .font(.subheadline)
                     .foregroundStyle(model.paramError == nil ? Color.secondary : Color.red)
@@ -208,8 +237,9 @@ struct ConverterView: View {
             )
             // Say why an entry was ignored; the label already covers the "h/week" caption.
             .accessibilityHint(model.paramError ?? "")
+            .focused($focusedRow, equals: Self.paramFocus)
         }
-        .cardStyle()
+        .cardStyle(isActive: isActive)
     }
 }
 
@@ -249,11 +279,18 @@ private struct NoteBanner: View {
 }
 
 extension View {
-    /// The rounded white card used for rows and tiles.
-    func cardStyle() -> some View {
+    /// The rounded white card used for rows and tiles. An active card — the row being typed
+    /// in — is outlined in the accent color.
+    func cardStyle(isActive: Bool = false) -> some View {
         padding(.horizontal, 16)
             .padding(.vertical, 12)
             .background(Color.cardBackground, in: .rect(cornerRadius: 14))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14)
+                    .strokeBorder(Color.accentColor, lineWidth: 2)
+                    .opacity(isActive ? 1 : 0)
+            }
+            .animation(.easeOut(duration: 0.15), value: isActive)
     }
 }
 
