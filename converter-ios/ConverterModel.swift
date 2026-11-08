@@ -33,10 +33,16 @@ final class ConverterModel {
     private(set) var calculation: (row: Int, result: String)?
 
     /// The pinned conversion the screen was opened from, if any. Its two units lead the list.
-    let pair: UnitPair?
+    private(set) var pair: UnitPair?
 
     /// Unit indices in the order the rows are shown: a pinned pair's units first, then the rest.
-    let displayOrder: [Int]
+    private(set) var displayOrder: [Int]
+
+    /// The calendar date conversions are for, in categories that depend on one (Clock).
+    private(set) var date = Date.now
+
+    /// Whether the category depends on a date the user can pick.
+    var hasDate: Bool { category.dateVariant != nil }
 
     /// Index of the pinned pair's "from" unit — the row to start typing in.
     var pairFromIndex: Int? { pair == nil ? nil : displayOrder.first }
@@ -66,18 +72,77 @@ final class ConverterModel {
         texts = Array(repeating: "", count: category.units.count)
         // A pair whose units can't be found (say, a Clock city no longer listed) opens the
         // category in its usual order.
-        let all = Array(category.units.indices)
-        if let pair,
-           let from = category.units.firstIndex(where: { $0.id == pair.fromUnitID }),
-           let to = category.units.firstIndex(where: { $0.id == pair.toUnitID }), from != to {
-            self.pair = pair
-            displayOrder = [from, to] + all.filter { $0 != from && $0 != to }
-        } else {
-            self.pair = nil
-            displayOrder = all
-        }
+        let order = Self.order(of: category, leadingWith: pair)
+        self.pair = order == nil ? nil : pair
+        displayOrder = order ?? Array(category.units.indices)
         decimals = Self.savedDecimals(category, defaults)
         fillInitialValue()
+    }
+
+    /// A pinned pair's units first, then the rest; nil if the pair's units aren't in `category`.
+    private static func order(of category: Category, leadingWith pair: UnitPair?) -> [Int]? {
+        guard let pair,
+              let from = category.units.firstIndex(where: { $0.id == pair.fromUnitID }),
+              let to = category.units.firstIndex(where: { $0.id == pair.toUnitID }), from != to else { return nil }
+        return [from, to] + category.units.indices.filter { $0 != from && $0 != to }
+    }
+
+    // MARK: Date and cities
+
+    /// Convert on another calendar date (Clock), so daylight saving is right for that day.
+    func setDate(_ newDate: Date) {
+        guard let variant = category.dateVariant else { return }
+        date = newDate
+        install(variant(newDate))
+    }
+
+    /// Back to the present: today's date, and the current time in the first row (Clock's "Now").
+    func resetToNow() {
+        if hasDate { setDate(.now) }
+        fillInitialValue()
+    }
+
+    /// Add a city (time-zone identifier) to Clock, keeping the chosen date and typed values.
+    func addCity(_ identifier: String) {
+        ClockCities.add(identifier, in: defaults)
+        reloadClock()
+    }
+
+    /// Remove a city the user added to Clock.
+    func removeCity(inRow row: Int) {
+        guard isAddedCity(row) else { return }
+        ClockCities.remove(category.units[row].id, in: defaults)
+        reloadClock()
+    }
+
+    /// Whether the unit in `row` is a city the user added to Clock, and so can be removed.
+    func isAddedCity(_ row: Int) -> Bool {
+        category.id == clockID && ClockCities.saved(in: defaults).contains(category.units[row].id)
+    }
+
+    /// Time zones already on the Clock list, which there's no point offering to add.
+    var shownZoneIDs: Set<String> {
+        Set(category.units.map(\.id)).union([TimeZone.current.identifier])
+    }
+
+    private func reloadClock() {
+        guard category.id == clockID else { return }
+        install(clockCategory(at: date, extraZoneIDs: ClockCities.saved(in: defaults)))
+    }
+
+    /// Swap in a rebuilt category whose units may differ, carrying values across by unit id.
+    private func install(_ new: Category) {
+        let oldIDs = category.units.map(\.id)
+        let editedID = lastEdited.map { oldIDs[$0] }
+        let oldTexts = texts
+        category = new
+        texts = new.units.map { unit in oldIDs.firstIndex(of: unit.id).map { oldTexts[$0] } ?? "" }
+        let order = Self.order(of: new, leadingWith: pair)
+        if order == nil { pair = nil }
+        displayOrder = order ?? Array(new.units.indices)
+        lastEdited = editedID.flatMap { id in new.units.firstIndex { $0.id == id } }
+        calculation = nil
+        if let lastEdited { recompute(from: lastEdited) }
     }
 
     // MARK: Editing
@@ -129,6 +194,9 @@ final class ConverterModel {
         var lines = [category.name]
         if let param = category.param, !paramText.isEmpty, paramError == nil {
             lines.append("\(param.label): \(paramText)")
+        }
+        if hasDate {
+            lines.append("Date: " + date.formatted(.dateTime.year().month(.abbreviated).day().locale(locale)))
         }
         // Math is shared as what it worked out to, not as "12*3".
         let sourceValue = calculation.flatMap { $0.row == source ? String($0.result.dropFirst(2)) : nil } ?? typed

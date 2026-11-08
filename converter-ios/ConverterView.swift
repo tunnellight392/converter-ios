@@ -11,6 +11,7 @@ struct ConverterView: View {
     /// The row being typed in. A pinned conversion opens with its "from" row focused.
     @FocusState private var focusedRow: Int?
     @State private var isPinningPair = false
+    @State private var isAddingCity = false
 
     /// Bumped on every copy, to play a success haptic.
     @State private var copyCount = 0
@@ -31,6 +32,9 @@ struct ConverterView: View {
                 if let param = model.category.param {
                     paramRow(param)
                 }
+                if model.hasDate {
+                    dateRow
+                }
                 if model.pair != nil {
                     // Opened from a pinned conversion: its two units first, then the rest.
                     sectionHeader("Pinned conversion")
@@ -48,6 +52,13 @@ struct ConverterView: View {
                         unitRow(index)
                     }
                 }
+                if model.category.id == clockID {
+                    Button("Add City", systemImage: "plus.circle.fill") {
+                        isAddingCity = true
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 4)
+                }
             }
             .padding()
         }
@@ -59,7 +70,7 @@ struct ConverterView: View {
             if model.category.openingValue != nil {
                 // Clock offers a way back to the current moment.
                 Button("Now", systemImage: "clock.arrow.circlepath") {
-                    model.fillInitialValue()
+                    model.resetToNow()
                 }
             }
             if model.category.valueFormat == nil {
@@ -70,6 +81,11 @@ struct ConverterView: View {
             pinMenu
         }
         .sensoryFeedback(.success, trigger: copyCount)
+        .sheet(isPresented: $isAddingCity) {
+            CityPickerSheet(excluding: model.shownZoneIDs) { identifier in
+                model.addCity(identifier)
+            }
+        }
         .sheet(isPresented: $isPinningPair) {
             PinPairSheet(
                 category: model.category,
@@ -193,7 +209,28 @@ struct ConverterView: View {
                     copy(row: index)
                 }
             }
+            if model.isAddedCity(index) {
+                Button("Remove City", systemImage: "minus.circle", role: .destructive) {
+                    withAnimation { model.removeCity(inRow: index) }
+                }
+            }
         }
+        .accessibilityActions {
+            if model.isAddedCity(index) {
+                Button("Remove City") { model.removeCity(inRow: index) }
+            }
+        }
+    }
+
+    /// The calendar date times are converted on, so daylight saving is right for that day.
+    private var dateRow: some View {
+        DatePicker(
+            "Date",
+            selection: Binding(get: { model.date }, set: { model.setDate($0) }),
+            displayedComponents: .date
+        )
+        .font(.headline)
+        .cardStyle()
     }
 
     /// Put a row's value on the clipboard, if it has one.
@@ -303,6 +340,82 @@ extension Color {
             green: Double((value >> 8) & 0xFF) / 255,
             blue: Double(value & 0xFF) / 255
         )
+    }
+}
+
+/// Every time zone the system knows, searchable by city or region, to add to Clock.
+private struct CityPickerSheet: View {
+    let excluding: Set<String>
+    let onPick: (String) -> Void
+
+    @State private var query = ""
+    @Environment(\.dismiss) private var dismiss
+
+    private struct Zone: Identifiable {
+        let id: String
+        let city: String
+        let region: String
+        let offset: String
+    }
+
+    /// Cities by name, leaving out those already on the list and plain offsets ("GMT+3").
+    private var zones: [Zone] {
+        TimeZone.knownTimeZoneIdentifiers
+            .filter { $0.contains("/") && !excluding.contains($0) && !$0.hasPrefix("Etc/") }
+            .compactMap { id in
+                guard let zone = TimeZone(identifier: id) else { return nil }
+                let region = id.split(separator: "/").dropLast().joined(separator: " · ")
+                    .replacingOccurrences(of: "_", with: " ")
+                return Zone(
+                    id: id,
+                    city: zoneCity(zone),
+                    region: region,
+                    offset: utcOffsetLabel(Double(zone.secondsFromGMT()) / 3600)
+                )
+            }
+            .filter { query.isEmpty || $0.city.localizedCaseInsensitiveContains(query) || $0.region.localizedCaseInsensitiveContains(query) }
+            .sorted { $0.city.localizedStandardCompare($1.city) == .orderedAscending }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List(zones) { zone in
+                Button {
+                    onPick(zone.id)
+                    dismiss()
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(zone.city)
+                                .foregroundStyle(Color.primary)
+                            Text(zone.region)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text(zone.offset)
+                            .font(.subheadline.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .combine)
+            }
+            .overlay {
+                if zones.isEmpty {
+                    ContentUnavailableView.search(text: query)
+                }
+            }
+            .searchable(text: $query, prompt: "City or region")
+            .navigationTitle("Add City")
+            .inlineNavigationTitle()
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
     }
 }
 

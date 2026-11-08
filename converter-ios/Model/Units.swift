@@ -50,6 +50,9 @@ struct Category: Identifiable {
     /// Value the first unit's field opens on, in that unit's own scale, in place of whatever the
     /// user last typed. Clock uses it to open on the current time.
     var openingValue: (() -> Double)? = nil
+    /// Set when conversions depend on a calendar date the user can pick — Clock, whose offsets
+    /// shift with daylight saving. Rebuilds the category for that date.
+    var dateVariant: ((Date) -> Category)? = nil
 }
 
 /// A number the user can change that the category's conversions depend on — currently only the
@@ -338,22 +341,59 @@ private let clockZones: [(id: String, name: String)] = [
     ("Pacific/Auckland", "Auckland")
 ]
 
-/// A time zone as a Clock unit. The base is hours since midnight UTC, so a zone is only an offset —
-/// the one it is on at `date`, which is what puts daylight saving in the right place for today.
-private func zoneUnit(_ name: String, zone: TimeZone, at date: Date, city: String? = nil, stableID: String? = nil) -> ConvUnit {
-    let offsetHours = Double(zone.secondsFromGMT(for: date)) / 3600.0
+/// A time zone as a Clock unit, for times on the calendar date `day`.
+///
+/// The base is hours since midnight UTC on `day`. Rather than applying one fixed offset, each
+/// conversion works out the actual moment — "09:30 on 29 March in London" — and reads it back
+/// in the other zone, so a daylight-saving change on or around that date lands exactly where it
+/// should, down to the hour of the switch.
+private func zoneUnit(_ name: String, zone: TimeZone, day: DateComponents, city: String? = nil, stableID: String? = nil) -> ConvUnit {
+    var utc = Calendar(identifier: .gregorian)
+    utc.timeZone = TimeZone(identifier: "UTC")!
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = zone
+    let utcMidnight = utc.date(from: day) ?? .now
+    let localMidnight = calendar.date(from: day) ?? .now
+
+    // Shown offset: the one the zone is on at midday of the chosen date.
+    var midday = day
+    midday.hour = 12
+    let offsetHours = Double(zone.secondsFromGMT(for: calendar.date(from: midday) ?? utcMidnight)) / 3600.0
     let offsetLabel = utcOffsetLabel(offsetHours)
+
     return ConvUnit(
         name: name,
         symbol: (city == nil || city == offsetLabel) ? offsetLabel : "\(city!) · \(offsetLabel)",
-        toBase: { $0 - offsetHours },
-        fromBase: { $0 + offsetHours },
+        toBase: { hours in
+            // Wall-clock time on `day` (or a day either side, for "+1d"/"-1d") → the moment it is.
+            guard hours.isFinite else { return .nan }
+            let seconds = Int((hours * 3600).rounded())
+            let dayOffset = Int((Double(seconds) / 86400).rounded(.down))
+            let remainder = seconds - dayOffset * 86400
+            var wall = day
+            wall.day = (day.day ?? 1) + dayOffset
+            wall.hour = remainder / 3600
+            wall.minute = remainder % 3600 / 60
+            wall.second = remainder % 60
+            guard let moment = calendar.date(from: wall) else { return .nan }
+            return moment.timeIntervalSince(utcMidnight) / 3600
+        },
+        fromBase: { base in
+            // The moment → the wall-clock time in this zone, counted from midnight on `day`.
+            guard base.isFinite else { return .nan }
+            let moment = utcMidnight.addingTimeInterval(base * 3600)
+            let parts = calendar.dateComponents([.hour, .minute, .second, .nanosecond], from: moment)
+            let days = calendar.dateComponents([.day], from: localMidnight, to: calendar.startOfDay(for: moment)).day ?? 0
+            return Double(days * 24 + (parts.hour ?? 0))
+                + Double(parts.minute ?? 0) / 60
+                + (Double(parts.second ?? 0) + Double(parts.nanosecond ?? 0) / 1e9) / 3600
+        },
         stableID: stableID ?? zone.identifier
     )
 }
 
 /// "UTC+05:30", "UTC-08:00", or plain "UTC" on a zero offset.
-private func utcOffsetLabel(_ offsetHours: Double) -> String {
+func utcOffsetLabel(_ offsetHours: Double) -> String {
     if offsetHours == 0 { return "UTC" }
     let minutes = Int((abs(offsetHours) * 60.0).rounded())
     let sign = offsetHours < 0 ? "-" : "+"
@@ -361,7 +401,7 @@ private func utcOffsetLabel(_ offsetHours: Double) -> String {
 }
 
 /// "Asia/Kolkata" → "Kolkata". An id with no region (such as "UTC") is its own name.
-private func zoneCity(_ zone: TimeZone) -> String {
+func zoneCity(_ zone: TimeZone) -> String {
     (zone.identifier.split(separator: "/").last.map(String.init) ?? zone.identifier)
         .replacingOccurrences(of: "_", with: " ")
 }
@@ -374,29 +414,64 @@ private func keepSameTime(_ a: TimeZone, _ b: TimeZone, at date: Date) -> Bool {
             && a.nextDaylightSavingTimeTransition(after: date) == b.nextDaylightSavingTimeTransition(after: date))
 }
 
-/// Build the Clock category as of `date`. The device's own zone leads the list — it comes from the
-/// system time-zone setting, so nothing here needs location access — followed by `clockZones`,
-/// minus any entry that keeps the same time as the device's zone anyway.
-func clockCategory(at date: Date = .now, local: TimeZone = .current) -> Category {
-    let elsewhere = clockZones
+/// The cities the user added to Clock, as time-zone identifiers, saved across launches.
+enum ClockCities {
+    private static let key = "clock.cities"
+
+    static func saved(in defaults: UserDefaults = .standard) -> [String] {
+        defaults.stringArray(forKey: key) ?? []
+    }
+
+    static func add(_ identifier: String, in defaults: UserDefaults = .standard) {
+        var cities = saved(in: defaults)
+        guard !cities.contains(identifier), TimeZone(identifier: identifier) != nil else { return }
+        cities.append(identifier)
+        defaults.set(cities, forKey: key)
+    }
+
+    static func remove(_ identifier: String, in defaults: UserDefaults = .standard) {
+        defaults.set(saved(in: defaults).filter { $0 != identifier }, forKey: key)
+    }
+
+    /// Zones already on the Clock list by default, which there's no point adding again.
+    static var builtIn: Set<String> { Set(clockZones.map(\.id)) }
+}
+
+/// Build the Clock category for times on the calendar date of `date` (in the device's zone).
+/// The device's own zone leads the list — it comes from the system time-zone setting, so nothing
+/// here needs location access — followed by `clockZones`, minus any that keeps the same time as
+/// the device's zone anyway, and then the cities the user added, which always show.
+func clockCategory(at date: Date = .now, local: TimeZone = .current, extraZoneIDs: [String]? = nil) -> Category {
+    var localCalendar = Calendar(identifier: .gregorian)
+    localCalendar.timeZone = local
+    let day = localCalendar.dateComponents([.year, .month, .day], from: date)
+    let extras = extraZoneIDs ?? ClockCities.saved()
+
+    let builtIn = clockZones
         .compactMap { entry in TimeZone(identifier: entry.id).map { (zone: $0, name: entry.name) } }
         .filter { !keepSameTime($0.zone, local, at: date) }
+    let added = extras
+        .filter { !ClockCities.builtIn.contains($0) }
+        .compactMap { id in TimeZone(identifier: id).map { (zone: $0, name: zoneCity($0)) } }
+    let elsewhere = (builtIn + added)
         .sorted { $0.zone.secondsFromGMT(for: date) < $1.zone.secondsFromGMT(for: date) }
-        .map { zoneUnit($0.name, zone: $0.zone, at: date) }
+        .map { zoneUnit($0.name, zone: $0.zone, day: day) }
+
     return Category(
         id: clockID, name: "Clock", emoji: "🕒", colorHex: "#4338CA",
         // "Local time" follows the device wherever it goes, so it is not tied to the zone's id.
-        units: [zoneUnit("Local time", zone: local, at: date, city: zoneCity(local), stableID: "local")] + elsewhere,
+        units: [zoneUnit("Local time", zone: local, day: day, city: zoneCity(local), stableID: "local")] + elsewhere,
         note: "Your own zone is the one the device is set to — no location access involved. "
-            + "Every zone is shown at the UTC offset it is on right now, so a time typed for a "
-            + "date the other side of a daylight-saving change can be an hour out.",
+            + "Times are converted on the date you pick, so daylight-saving changes are "
+            + "taken into account.",
         valueFormat: ClockFormat(),
         openingValue: {
             var calendar = Calendar(identifier: .gregorian)
             calendar.timeZone = local
             let parts = calendar.dateComponents([.hour, .minute], from: .now)
             return Double(parts.hour ?? 0) + Double(parts.minute ?? 0) / 60.0
-        }
+        },
+        dateVariant: { clockCategory(at: $0, local: local, extraZoneIDs: extraZoneIDs) }
     )
 }
 
