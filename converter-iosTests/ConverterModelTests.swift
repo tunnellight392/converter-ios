@@ -15,8 +15,8 @@ struct ConverterModelTests {
         defaults.removePersistentDomain(forName: suite)
     }
 
-    private func model(_ id: String) throws -> ConverterModel {
-        try #require(ConverterModel(categoryID: id, defaults: defaults))
+    private func model(_ id: String, locale: Locale = .usEnglish) throws -> ConverterModel {
+        try #require(ConverterModel(categoryID: id, defaults: defaults, locale: locale))
     }
 
     @Test func unknownCategoryHasNoModel() {

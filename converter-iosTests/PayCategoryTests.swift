@@ -27,7 +27,9 @@ struct PayCategoryTests {
 
         #expect(abs(partHourly.convert(1, to: partYearly) - 1950) < 1e-9)
         #expect(abs(partYearly.convert(39000, to: partHourly) - 20) < 1e-9)
-        #expect(part.note == "Conversions assume a 37.5-hour work week (1950 hours per year).")
+        // The note writes the hours the way the device's locale does ("37,5" in Germany).
+        let hours = UnitsRepository.format(37.5)
+        #expect(part.note == "Conversions assume a \(hours)-hour work week (1950 hours per year).")
     }
 
     @Test func monthlyIsUnaffectedByTheWorkWeek() throws {

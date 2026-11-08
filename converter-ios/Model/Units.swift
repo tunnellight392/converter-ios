@@ -134,8 +134,16 @@ private let posixLocale = Locale(identifier: "en_US_POSIX")
 
 /// Implementation of `UnitsRepository.format`. Mirrors the Android app: ~10 significant digits
 /// with trailing zeros trimmed, or a fixed number of places, and scientific notation for very
-/// large or small magnitudes.
-private func formatNumber(_ value: Double, decimals: Int? = nil) -> String {
+/// large or small magnitudes. The decimal separator follows `locale` ("1,5" in Germany); there
+/// is never any digit grouping, so results stay easy to copy and to type over.
+private func formatNumber(_ value: Double, decimals: Int? = nil, locale: Locale = .autoupdatingCurrent) -> String {
+    let plain = formatPOSIXNumber(value, decimals: decimals)
+    let separator = locale.decimalSeparator ?? "."
+    return separator == "." ? plain : plain.replacingOccurrences(of: ".", with: separator)
+}
+
+/// `formatNumber` with a "." decimal separator, whatever the locale.
+private func formatPOSIXNumber(_ value: Double, decimals: Int?) -> String {
     guard value.isFinite else { return "" }
     let magnitude = abs(value)
     // Outside this window a plain decimal is unreadable however many places are asked for.
@@ -158,6 +166,49 @@ private func formatNumber(_ value: Double, decimals: Int? = nil) -> String {
     NSDecimalRound(&rounded, &exact, scale, .plain)
     // Decimal's description is plain notation with trailing zeros already trimmed.
     return rounded.description
+}
+
+/// Implementation of `UnitsRepository.parse`: reads a number the way people in `locale` write
+/// one, while still accepting the forms people use everywhere.
+///
+/// - A comma or a period can be the decimal separator, so "1,5" and "1.5" both read as 1.5.
+/// - When both appear, whichever comes last is the decimal separator and the other is grouping:
+///   "1.234,5" and "1,234.5" both read as 1234.5.
+/// - A lone separator is grouping only when it is the locale's grouping separator and exactly
+///   three digits follow it, so "1.500" is 1500 in Germany but "1.5" is 1.5 everywhere.
+/// - Spaces and apostrophes (French and Swiss grouping) are ignored, as is a typographic minus.
+private func parseNumber(_ text: String, locale: Locale = .autoupdatingCurrent) -> Double? {
+    var s = text.trimmingCharacters(in: .whitespaces)
+        .replacingOccurrences(of: "\u{2212}", with: "-")
+    s.removeAll { " \u{00A0}\u{202F}'’".contains($0) }
+    guard !s.isEmpty else { return nil }
+
+    let separators = s.filter { $0 == "." || $0 == "," }
+    if let last = s.lastIndex(where: { $0 == "." || $0 == "," }) {
+        let decimal = s[last]
+        let other: Character = decimal == "." ? "," : "."
+        let digitsAfter = s[s.index(after: last)...].prefix { $0.isNumber }.count
+        let isGrouping = separators.count > 1 && !separators.contains(other)
+            // Several of one kind ("1.234.567") can only be grouping.
+            || (separators.count == 1
+                && locale.groupingSeparator == String(decimal)
+                && locale.decimalSeparator != String(decimal)
+                && digitsAfter == 3)
+        if isGrouping {
+            s.removeAll { $0 == decimal }
+        } else {
+            // Everything before the last separator of the other kind is grouping.
+            s.removeAll { $0 == other }
+            s = s.replacingOccurrences(of: String(decimal), with: ".")
+            // The decimal separator can't also appear earlier as grouping ("1.2,3.4").
+            if s.filter({ $0 == "." }).count > 1 { return nil }
+        }
+    }
+    // Only plain decimal numbers (optionally with an exponent) — Double(_:) would otherwise
+    // also accept "inf", "nan" and hexadecimal.
+    guard s.allSatisfy({ $0.isASCII && ($0.isNumber || "+-.eE".contains($0)) }),
+          let value = Double(s), value.isFinite else { return nil }
+    return value
 }
 
 // MARK: - Pay
@@ -612,8 +663,14 @@ enum UnitsRepository {
     /// Format a converted value for display. With `decimals` the value is rounded to that many
     /// places; without it precision is limited to ~10 significant digits and trailing zeros are
     /// trimmed. Either way very large/small magnitudes fall back to scientific notation.
-    static func format(_ value: Double, decimals: Int? = nil) -> String {
-        formatNumber(value, decimals: decimals)
+    static func format(_ value: Double, decimals: Int? = nil, locale: Locale = .autoupdatingCurrent) -> String {
+        formatNumber(value, decimals: decimals, locale: locale)
+    }
+
+    /// Read a number typed in a field, in `locale`'s conventions or the "." ones. Returns nil for
+    /// text that isn't a usable number.
+    static func parse(_ text: String, locale: Locale = .autoupdatingCurrent) -> Double? {
+        parseNumber(text, locale: locale)
     }
 
     /// Find the categories matching a search `query`. A category whose own name matches wins;

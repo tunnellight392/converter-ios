@@ -13,7 +13,7 @@ struct UnitsRepositoryTests {
         (1.005, 2, "1.01")
     ])
     func formatsToAFixedNumberOfDecimals(value: Double, decimals: Int, expected: String) {
-        #expect(UnitsRepository.format(value, decimals: decimals) == expected)
+        #expect(UnitsRepository.format(value, decimals: decimals, locale: .usEnglish) == expected)
     }
 
     @Test(arguments: [
@@ -24,7 +24,7 @@ struct UnitsRepositoryTests {
         (1.0 / 3.0, "0.3333333333")
     ])
     func formatsAdaptivelyWithoutDecimals(value: Double, expected: String) {
-        #expect(UnitsRepository.format(value) == expected)
+        #expect(UnitsRepository.format(value, locale: .usEnglish) == expected)
     }
 
     @Test func keepsScientificNotationForExtremeMagnitudes() {

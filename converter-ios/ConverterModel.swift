@@ -30,15 +30,19 @@ final class ConverterModel {
 
     private let defaults: UserDefaults
 
-    init?(categoryID: String, defaults: UserDefaults = .standard) {
+    /// Whose conventions numbers are read and shown in — "1,5" in Germany, "1.5" in the US.
+    private let locale: Locale
+
+    init?(categoryID: String, defaults: UserDefaults = .standard, locale: Locale = .autoupdatingCurrent) {
         guard let base = UnitsRepository.category(id: categoryID) else { return nil }
         self.defaults = defaults
+        self.locale = locale
         var category = base
         // Reopen with whatever parameter value was last used, not the built-in default.
         if let param = base.param {
             let value = Self.savedParamValue(base.id, param, defaults)
             category = param.variantFor(value)
-            paramText = UnitsRepository.format(value)
+            paramText = UnitsRepository.format(value, locale: locale)
         }
         self.category = category
         texts = Array(repeating: "", count: category.units.count)
@@ -60,10 +64,11 @@ final class ConverterModel {
         paramText = text
         guard let param = category.param else { return }
         let trimmed = text.trimmingCharacters(in: .whitespaces)
-        guard let value = Double(trimmed), param.range.contains(value) else {
+        guard let value = UnitsRepository.parse(trimmed, locale: locale), param.range.contains(value) else {
             // Keep the last usable setting, but say why a nonsense entry had no effect.
-            paramError = trimmed.isEmpty ? nil
-                : "Enter \(UnitsRepository.format(param.range.lowerBound))–\(UnitsRepository.format(param.range.upperBound))"
+            let low = UnitsRepository.format(param.range.lowerBound, locale: locale)
+            let high = UnitsRepository.format(param.range.upperBound, locale: locale)
+            paramError = trimmed.isEmpty ? nil : "Enter \(low)–\(high)"
             return
         }
         paramError = nil
@@ -123,12 +128,12 @@ final class ConverterModel {
     /// Read a field the way this category writes values — Clock's "14:30", say, rather than 14.5.
     private func parseValue(_ text: String) -> Double? {
         if let format = category.valueFormat { return format.parse(text) }
-        return Double(text)
+        return UnitsRepository.parse(text, locale: locale)
     }
 
     /// Render a converted value the way this category writes values.
     private func formatValue(_ value: Double) -> String {
-        category.valueFormat?.format(value) ?? UnitsRepository.format(value, decimals: decimals)
+        category.valueFormat?.format(value) ?? UnitsRepository.format(value, decimals: decimals, locale: locale)
     }
 
     // MARK: Persistence
