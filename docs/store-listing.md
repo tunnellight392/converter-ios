@@ -15,7 +15,7 @@ checked against Apple's limits; re-check them after editing._
 | Price | Free |
 | Copyright | © 2026 Alex Therakathu |
 | Support URL | _required — e.g. the GitHub repo or a support page_ |
-| Privacy Policy URL | _required — host a copy of the Android app's `privacy-policy.html`; it applies unchanged_ |
+| Privacy Policy URL | _required — host [`privacy-policy.md`](privacy-policy.md) somewhere public (e.g. its GitHub link or GitHub Pages) and paste the URL here_ |
 | Marketing URL | _optional_ |
 
 **The name may already be taken.** App Store names must be unique. If "Unit Converter" is
@@ -190,7 +190,7 @@ Availability › iPhone and iPad Apps on Apple Silicon Macs.
 ## Upload checklist
 
 - [ ] Reserve the app name in App Store Connect (pick an alternative above if it's taken)
-- [ ] Host the privacy policy and fill in the Support and Privacy Policy URLs
+- [ ] Host [`privacy-policy.md`](privacy-policy.md) publicly and fill in the Support and Privacy Policy URLs
 - [ ] Fill in subtitle, promotional text, description, keywords and What's New
 - [ ] Upload the 8 iPhone and 4 iPad captioned screenshots, in order
 - [ ] App Privacy: "Data Not Collected"
