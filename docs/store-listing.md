@@ -133,9 +133,9 @@ Answer **"No, we do not collect data from this app."**
   isn't "collection" under Apple's definition.
 - Clock uses the device's time-zone setting and never requests location.
 
-**Export compliance:** the app uses no encryption beyond what iOS provides. Answer "None of
-the algorithms mentioned above". To skip the question on every upload, add
-`ITSAppUsesNonExemptEncryption = NO` to the target's Info settings.
+**Export compliance:** the app uses no encryption beyond what iOS provides. The app's Info
+settings already include `ITSAppUsesNonExemptEncryption = NO`, so App Store Connect doesn't ask
+for each build. If it ever does, answer "None of the algorithms mentioned above".
 
 ---
 
