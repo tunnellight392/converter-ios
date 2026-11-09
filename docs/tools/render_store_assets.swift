@@ -1,6 +1,7 @@
 // Renders the App Store artwork in docs/ from the raw simulator screenshots:
 //   • screenshots/<device>/captioned/*.png — each raw screenshot under a caption, on the app's
 //     blue gradient, at the same pixel size as the raw one (so App Store Connect accepts it)
+//   • screenshots/iphone-6.3 and iphone-6.1 — the iPhone set at 1206 × 2622 and 1179 × 2556
 //   • banner-1024x500.png — a promotional banner with the app icon, name and tagline
 //   • creative-assets/*.png — App Store featuring artwork (header and search-result sizes),
 //     each text-free plus a "-text" version with the app name
@@ -113,12 +114,15 @@ let iPadShots = [
     Shot(file: "04-dark", title: "Easy on the eyes", subtitle: "No ads. No tracking. Works offline.")
 ]
 
-func renderCaptioned(_ shots: [Shot], device: String) {
+/// Captioned screenshots from `device`'s raw ones. With `size`, renders at that size into
+/// `outputDevice`'s folder instead (the 6.3" and 6.1" iPhone sets come from the 6.9" shots).
+func renderCaptioned(_ shots: [Shot], device: String, size: (width: Int, height: Int)? = nil, outputDevice: String? = nil) {
     for shot in shots {
         let rawPath = "docs/screenshots/\(device)/raw/\(shot.file).png"
         guard let raw = loadImage(rawPath) else { print("missing", rawPath); continue }
-        let width = CGFloat(raw.width), height = CGFloat(raw.height)
-        let ctx = makeContext(width: raw.width, height: raw.height)
+        let pixelWidth = size?.width ?? raw.width, pixelHeight = size?.height ?? raw.height
+        let width = CGFloat(pixelWidth), height = CGFloat(pixelHeight)
+        let ctx = makeContext(width: pixelWidth, height: pixelHeight)
         drawBackground(ctx, width: width, height: height)
 
         // Caption block across the top.
@@ -136,8 +140,9 @@ func renderCaptioned(_ shots: [Shot], device: String) {
         let shotTop = captionTop - titleHeight - subtitleHeight - unit * 0.07
         // Wide enough that the screenshot runs well past the bottom edge, so only its top
         // corners show and no row is cut by a rounded corner.
-        let shotWidth = max(width * 0.82, (shotTop + height * 0.06) * width / height)
-        let shotHeight = shotWidth * height / width
+        let rawAspect = CGFloat(raw.height) / CGFloat(raw.width)
+        let shotWidth = max(width * 0.82, (shotTop + height * 0.06) / rawAspect)
+        let shotHeight = shotWidth * rawAspect
         let shotRect = CGRect(x: (width - shotWidth) / 2, y: shotTop - shotHeight, width: shotWidth, height: shotHeight)
         // iPad screens have much tighter corners than iPhones relative to their width.
         let radius = shotWidth * (device.hasPrefix("ipad") ? 0.03 : 0.07)
@@ -156,7 +161,7 @@ func renderCaptioned(_ shots: [Shot], device: String) {
         ctx.draw(raw, in: shotRect)
         ctx.restoreGState()
 
-        write(ctx, to: "docs/screenshots/\(device)/captioned/\(shot.file).png")
+        write(ctx, to: "docs/screenshots/\(outputDevice ?? device)/captioned/\(shot.file).png")
     }
 }
 
@@ -311,6 +316,22 @@ func renderCreativeAssets() {
     }
 }
 
+/// Raw screenshots for a smaller display, scaled from `device`'s to fill `width` × `height`.
+/// The proportions differ by well under 1%, so at most a few pixels are trimmed, evenly from
+/// both edges.
+func resizeRaw(_ shots: [Shot], from device: String, to outputDevice: String, width: Int, height: Int) {
+    for shot in shots {
+        let rawPath = "docs/screenshots/\(device)/raw/\(shot.file).png"
+        guard let raw = loadImage(rawPath) else { print("missing", rawPath); continue }
+        let scale = max(CGFloat(width) / CGFloat(raw.width), CGFloat(height) / CGFloat(raw.height))
+        let drawWidth = CGFloat(raw.width) * scale, drawHeight = CGFloat(raw.height) * scale
+        let ctx = makeContext(width: width, height: height)
+        ctx.draw(raw, in: CGRect(x: (CGFloat(width) - drawWidth) / 2, y: (CGFloat(height) - drawHeight) / 2,
+                                 width: drawWidth, height: drawHeight))
+        write(ctx, to: "docs/screenshots/\(outputDevice)/raw/\(shot.file).png")
+    }
+}
+
 /// Simulator screenshots carry an alpha channel, which App Store Connect can reject; redraw
 /// each raw screenshot onto an opaque canvas in place.
 func flattenRaw(_ shots: [Shot], device: String) {
@@ -329,5 +350,10 @@ flattenRaw(iPhoneShots, device: "iphone-6.9")
 flattenRaw(iPadShots, device: "ipad-13")
 renderCaptioned(iPhoneShots, device: "iphone-6.9")
 renderCaptioned(iPadShots, device: "ipad-13")
+// Smaller iPhones, from the 6.9" screenshots: 6.3" (1206 × 2622) and 6.1" (1179 × 2556).
+for (folder, width, height) in [("iphone-6.3", 1206, 2622), ("iphone-6.1", 1179, 2556)] {
+    resizeRaw(iPhoneShots, from: "iphone-6.9", to: folder, width: width, height: height)
+    renderCaptioned(iPhoneShots, device: "iphone-6.9", size: (width, height), outputDevice: folder)
+}
 renderBanner()
 renderCreativeAssets()

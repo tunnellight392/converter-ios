@@ -147,6 +147,8 @@ for each build. If it ever does, answer "None of the algorithms mentioned above"
 | `icons/app-icon-ios-512.png` | Web and press use | 512 × 512 |
 | `banner-1024x500.png` | Promo banner for a website, social media or press kit. The App Store has no banner slot | 1024 × 500 |
 | `screenshots/iphone-6.9/captioned/*.png` | **Upload these:** iPhone 6.9" Display. Apple scales them down for smaller iPhones | 1320 × 2868 |
+| `screenshots/iphone-6.3/captioned/*.png` | iPhone 6.3" Display, if App Store Connect asks for it (rendered from the 6.9" set) | 1206 × 2622 |
+| `screenshots/iphone-6.1/captioned/*.png` | iPhone 6.1" Display, if App Store Connect asks for it (rendered from the 6.9" set) | 1179 × 2556 |
 | `screenshots/ipad-13/captioned/*.png` | **Upload these:** iPad 13" Display (required because the app runs on iPad) | 2064 × 2752 |
 | `screenshots/*/raw/*.png` | The same screens without captions, if you'd rather upload plain screenshots | same sizes |
 
@@ -201,8 +203,8 @@ Availability › iPhone and iPad Apps on Apple Silicon Macs.
    swiftc -module-cache-path /tmp/swiftcache docs/tools/render_store_assets.swift -o /tmp/render_store_assets
    /tmp/render_store_assets
    ```
-   This flattens the raw screenshots, renders the captioned ones, and redraws the banner and
-   the creative assets.
+   This flattens the raw screenshots, renders the captioned ones (including the 6.3" and 6.1"
+   iPhone sets, made from the 6.9" shots), and redraws the banner and the creative assets.
    Captions are defined at the top of the script.
 
 ---
