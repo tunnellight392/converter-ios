@@ -19,6 +19,9 @@ struct ConverterView: View {
     /// Focus value for the parameter field (hours per week), alongside unit-row indices.
     private static let paramFocus = -1
 
+    /// Widest the column of rows gets (iPad).
+    private static let maxContentWidth: CGFloat = 700
+
     init(model: ConverterModel) {
         _model = State(initialValue: model)
     }
@@ -61,6 +64,10 @@ struct ConverterView: View {
                 }
             }
             .padding()
+            // On iPad, a centered column of comfortable width rather than rows stretched across
+            // the whole screen; iPhones are narrower than this, so they're unaffected.
+            .frame(maxWidth: Self.maxContentWidth)
+            .frame(maxWidth: .infinity)
         }
         .background(Color.groupedBackground)
         .scrollDismissesKeyboard(.interactively)

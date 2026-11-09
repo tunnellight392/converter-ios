@@ -1,4 +1,4 @@
-# App Store Listing — Unit Converter (iOS, iPadOS, macOS)
+# App Store Listing — Unit Converter (iPhone and iPad)
 
 _Reflects version 1.0 (build 1), bundle ID `com.tunnellight.converter`. Character counts were
 checked against Apple's limits; re-check them after editing._
@@ -97,7 +97,7 @@ FEEDBACK
 Have a suggestion, found a bug, or want a new category? Send feedback right from the app — we read every message.
 ```
 
-_(see the character count in the checklist below)_
+_(2,705 characters — within the 4,000 limit)_
 
 ---
 
@@ -107,6 +107,7 @@ _(see the character count in the checklist below)_
 convert,metric,imperial,measure,weight,temperature,cups,recipe,shoe,size,timezone,mpg,psi,calculator
 ```
 
+_(100 characters — exactly at the limit; drop a word before adding one.)_
 _Leave out words already in the name or subtitle ("unit", "converter", "offline", "sizes",
 "time"): Apple indexes those automatically, so repeating them wastes characters._
 
@@ -115,7 +116,7 @@ _Leave out words already in the name or subtitle ("unit", "converter", "offline"
 ## What's New in This Version (version 1.0)
 
 ```
-Welcome to Unit Converter for iPhone, iPad and Mac — 21 categories, pinned favorites, math in every field, and time zones that get daylight saving right on any date.
+Welcome to Unit Converter for iPhone and iPad — 21 categories, pinned favorites, math in every field, and time zones that get daylight saving right on any date.
 ```
 
 ---
@@ -144,7 +145,6 @@ the algorithms mentioned above". To skip the question on every upload, add
 |---|---|---|
 | `icons/app-icon-ios-1024.png` | App Store icon (App Store Connect takes it from the build; keep for reference and marketing) | 1024 × 1024, no alpha |
 | `icons/app-icon-ios-512.png` | Web and press use | 512 × 512 |
-| `icons/app-icon-macos-1024.png` | Mac icon, rounded shape with transparency (also taken from the build) | 1024 × 1024 |
 | `banner-1024x500.png` | Promo banner for a website, social media or press kit. The App Store has no banner slot | 1024 × 500 |
 | `screenshots/iphone-6.9/captioned/*.png` | **Upload these:** iPhone 6.9" Display. Apple scales them down for smaller iPhones | 1320 × 2868 |
 | `screenshots/ipad-13/captioned/*.png` | **Upload these:** iPad 13" Display (required because the app runs on iPad) | 2064 × 2752 |
@@ -165,9 +165,9 @@ the algorithms mentioned above". To skip the question on every upload, add
 
 The iPad set uses `01-home`, `02-length`, `03-clock` and `04-dark` with the same captions.
 
-**Mac screenshots:** if you release the Mac version, App Store Connect also needs at least one
-Mac screenshot (1280 × 800, 1440 × 900, 2560 × 1600 or 2880 × 1800). Those haven't been taken
-yet.
+**Macs with Apple silicon:** App Store Connect lists iPhone and iPad apps on the Mac App Store
+by default, as "Designed for iPad". To keep the app off Macs, turn that off under Pricing and
+Availability › iPhone and iPad Apps on Apple Silicon Macs.
 
 ### Regenerating the artwork
 
@@ -197,4 +197,4 @@ yet.
 - [ ] Age rating questionnaire: all "None" → 4+
 - [ ] Category: Utilities (secondary: Productivity)
 - [ ] Archive in Xcode (Product › Archive) and upload the build
-- [ ] (Mac) Add Mac screenshots, or remove macOS from Supported Destinations before submitting
+- [ ] Decide whether to offer the app on Apple silicon Macs (Pricing and Availability)

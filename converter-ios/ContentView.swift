@@ -12,9 +12,19 @@ struct ContentView: View {
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    /// Two columns of tiles, or one at accessibility text sizes so names have room to grow.
+    /// As many tile columns as fit at 160 pt or wider — two on iPhone, five or so on a large iPad —
+    /// or a single column at accessibility text sizes so names have room to grow.
     private var columns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: 16), count: dynamicTypeSize.isAccessibilitySize ? 1 : 2)
+        dynamicTypeSize.isAccessibilitySize
+            ? [GridItem(.flexible(), spacing: 16)]
+            : [GridItem(.adaptive(minimum: 160), spacing: 16)]
+    }
+
+    /// Pinned conversion cards: one per row on iPhone, side by side where there's room (iPad).
+    private var pairColumns: [GridItem] {
+        dynamicTypeSize.isAccessibilitySize
+            ? [GridItem(.flexible(), spacing: 16)]
+            : [GridItem(.adaptive(minimum: 300), spacing: 16)]
     }
 
     @Environment(Favorites.self) private var favorites
@@ -84,21 +94,25 @@ struct ContentView: View {
         }
     }
 
-    /// Pinned conversions as full-width cards, then pinned categories as tiles.
+    /// Pinned conversions as cards, then pinned categories as tiles.
     private func pinnedSection(pairs: [ResolvedPair], categories pinned: [Category]) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             sectionHeader("Pinned")
-            ForEach(pairs) { resolved in
-                NavigationLink(value: Route.pair(resolved.pair)) {
-                    PairCard(resolved: resolved)
-                }
-                .buttonStyle(.plain)
-                .contextMenu {
-                    Button("Unpin", systemImage: "pin.slash") {
-                        favorites.unpin(resolved.pair)
+            if !pairs.isEmpty {
+                LazyVGrid(columns: pairColumns, spacing: 16) {
+                    ForEach(pairs) { resolved in
+                        NavigationLink(value: Route.pair(resolved.pair)) {
+                            PairCard(resolved: resolved)
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            Button("Unpin", systemImage: "pin.slash") {
+                                favorites.unpin(resolved.pair)
+                            }
+                        }
+                        .accessibilityAction(named: "Unpin") { favorites.unpin(resolved.pair) }
                     }
                 }
-                .accessibilityAction(named: "Unpin") { favorites.unpin(resolved.pair) }
             }
             if !pinned.isEmpty {
                 LazyVGrid(columns: columns, spacing: 16) {
@@ -113,7 +127,7 @@ struct ContentView: View {
     /// Every category not pinned (or every search match), draggable to reorder.
     @ViewBuilder
     private func grid(_ matches: [CategoryMatch]) -> some View {
-        if #available(iOS 27.0, macOS 27.0, *) {
+        if #available(iOS 27.0, *) {
             LazyVGrid(columns: columns, spacing: 16) {
                 ForEach(matches) { match in
                     tileLink(match)
@@ -176,7 +190,7 @@ struct ContentView: View {
     }
 
     /// Apply a drag-to-reorder from the iOS 27 reorder container.
-    @available(iOS 27.0, macOS 27.0, *)
+    @available(iOS 27.0, *)
     private func move(_ difference: ReorderDifference<String, ReorderableSingleCollectionIdentifier>) {
         let before: String?
         switch difference.destination.position {
@@ -286,6 +300,7 @@ private struct PairCard: View {
     let resolved: ResolvedPair
 
     @ScaledMetric(relativeTo: .title3) private var circleSize: CGFloat = 40
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     /// "1 mi = 1.609344 km", for categories whose values are plain numbers.
     private var sample: String? {
@@ -293,6 +308,13 @@ private struct PairCard: View {
         guard category.valueFormat == nil else { return nil }
         let result = UnitsRepository.format(resolved.from.convert(1, to: resolved.to), decimals: category.decimals)
         return "1 \(resolved.from.symbol) = \(result) \(resolved.to.symbol)"
+    }
+
+    /// "Length · 1 ft = 30.48 cm"
+    private var subtitle: some View {
+        Text(sample.map { "\(resolved.category.name) · \($0)" } ?? resolved.category.name)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
     }
 
     var body: some View {
@@ -306,9 +328,13 @@ private struct PairCard: View {
                 Text("\(resolved.from.name) → \(resolved.to.name)")
                     .font(.headline)
                     .accessibilityLabel("\(resolved.from.name) to \(resolved.to.name)")
-                Text(sample.map { "\(resolved.category.name) · \($0)" } ?? resolved.category.name)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                // Side by side (iPad), cards are narrow enough for this line to wrap; reserving
+                // two lines in every card keeps a row of cards the same height.
+                if horizontalSizeClass == .regular {
+                    subtitle.lineLimit(2, reservesSpace: true)
+                } else {
+                    subtitle
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Image(systemName: "chevron.right")

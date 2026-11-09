@@ -132,10 +132,13 @@ func renderCaptioned(_ shots: [Shot], device: String) {
         // The screenshot below, scaled down with rounded corners and a soft shadow; it runs
         // off the bottom edge, as store screenshots commonly do.
         let shotTop = captionTop - titleHeight - subtitleHeight - unit * 0.07
-        let shotWidth = width * 0.82
+        // Wide enough that the screenshot runs well past the bottom edge, so only its top
+        // corners show and no row is cut by a rounded corner.
+        let shotWidth = max(width * 0.82, (shotTop + height * 0.06) * width / height)
         let shotHeight = shotWidth * height / width
         let shotRect = CGRect(x: (width - shotWidth) / 2, y: shotTop - shotHeight, width: shotWidth, height: shotHeight)
-        let radius = shotWidth * 0.07
+        // iPad screens have much tighter corners than iPhones relative to their width.
+        let radius = shotWidth * (device.hasPrefix("ipad") ? 0.03 : 0.07)
         let shape = CGPath(roundedRect: shotRect, cornerWidth: radius, cornerHeight: radius, transform: nil)
 
         ctx.saveGState()
@@ -189,6 +192,22 @@ func renderBanner() {
     write(ctx, to: "docs/banner-1024x500.png")
 }
 
+/// Simulator screenshots carry an alpha channel, which App Store Connect can reject; redraw
+/// each raw screenshot onto an opaque canvas in place.
+func flattenRaw(_ shots: [Shot], device: String) {
+    for shot in shots {
+        let path = "docs/screenshots/\(device)/raw/\(shot.file).png"
+        guard let raw = loadImage(path), raw.alphaInfo != .noneSkipLast, raw.alphaInfo != .none else { continue }
+        let ctx = makeContext(width: raw.width, height: raw.height)
+        ctx.setFillColor(color(0xFFFFFF))
+        ctx.fill(CGRect(x: 0, y: 0, width: raw.width, height: raw.height))
+        ctx.draw(raw, in: CGRect(x: 0, y: 0, width: raw.width, height: raw.height))
+        write(ctx, to: path)
+    }
+}
+
+flattenRaw(iPhoneShots, device: "iphone-6.9")
+flattenRaw(iPadShots, device: "ipad-13")
 renderCaptioned(iPhoneShots, device: "iphone-6.9")
 renderCaptioned(iPadShots, device: "ipad-13")
 renderBanner()
