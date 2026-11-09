@@ -150,6 +150,25 @@ the algorithms mentioned above". To skip the question on every upload, add
 | `screenshots/ipad-13/captioned/*.png` | **Upload these:** iPad 13" Display (required because the app runs on iPad) | 2064 × 2752 |
 | `screenshots/*/raw/*.png` | The same screens without captions, if you'd rather upload plain screenshots | same sizes |
 
+### Creative assets (App Store featuring artwork)
+
+In `creative-assets/`, for App Store Connect's promotional artwork (used when nominating the app
+for featuring). Each size comes in two versions:
+- **Text-free:** upload these. Apple adds its own titles and asks for artwork without text.
+- **`-text`:** with the app name and tagline, for a website, social media or a press kit.
+
+| File | Use | Size |
+|---|---|---|
+| `header-5244x2950.png` | Header artwork, 16:9 | 5244 × 2950 |
+| `header-3840x1646.png` | Header artwork, ultra-wide | 3840 × 1646 |
+| `search-5244x2950.png` | Search results artwork, 16:9 | 5244 × 2950 |
+| `search-3840x2560.png` | Search results artwork, 3:2 | 3840 × 2560 |
+| `search-1920x1280.png` | Search results artwork, 3:2 (smaller) | 1920 × 1280 |
+
+The icon and phones stay within the middle of each image, because the App Store may crop the
+edges. The phones show the raw iPhone screenshots, so re-running the script after retaking
+screenshots updates these too.
+
 ### Screenshot order and captions
 
 | # | iPhone file | Caption |
@@ -182,7 +201,8 @@ Availability › iPhone and iPad Apps on Apple Silicon Macs.
    swiftc -module-cache-path /tmp/swiftcache docs/tools/render_store_assets.swift -o /tmp/render_store_assets
    /tmp/render_store_assets
    ```
-   This flattens the raw screenshots, renders the captioned ones, and redraws the banner.
+   This flattens the raw screenshots, renders the captioned ones, and redraws the banner and
+   the creative assets.
    Captions are defined at the top of the script.
 
 ---
